@@ -88,6 +88,21 @@ Both channels are required. AGENTS.md provides project-wide rules; story Dev Not
 
 ## Pipeline
 
+### Completion Gate — HARD REQUIREMENT
+
+**You are NOT done until Phase 10c (Quinn Adversarial Review) has run.** This is a hard gate, not a suggestion. Implementation alone (Phase 10) is NOT completion. The pipeline minimum is:
+
+**Phase 10 (Implementation) → Phase 10b (Pattern Capture) → Phase 10c (Quinn Review)**
+
+If you are about to output a final summary or declare the task complete, STOP and check:
+1. Did you run `git diff main...HEAD` and invoke the three Quinn review layers?
+2. Did you file findings as beads issues and fix P0/P1s?
+3. Did you output the Quinn findings report?
+
+If the answer to ANY of these is NO, you are not done. Continue to Phase 10c before responding.
+
+**This gate applies in ALL modes:** interactive, `-q` single-query, `--yolo`, and Telegram. No exceptions.
+
 ### Yolo Mode — No Human Gates
 
 **When invoked with `--yolo`, the entire pipeline runs end-to-end with ZERO human gates.** Do NOT pause between phases to ask "want to continue?" or "ready to proceed?" or present a summary and wait. The only acceptable halts in yolo mode are:
@@ -900,6 +915,8 @@ When all stories are closed (or only escalated stories remain), proceed to Phase
 
 If stories are blocked on escalations, proceed to Phase 10b anyway with what's complete — partial apps can still be validated and deployed.
 
+**⚠ COMPLETION GATE:** Do NOT declare the task done, output a final summary, or exit after Phase 10. You MUST continue through Phase 10b → 10c → 11. Phase 10c (Quinn Review) is mandatory — skipping it is a bug in your execution, not a valid shortcut. This applies even in `-q` mode.
+
 ### Phase 10b: Pattern Capture (Brownfield Only)
 
 **Skip if greenfield.** Greenfield projects establish patterns — brownfield projects need to record new patterns so the NEXT session inherits them.
@@ -938,9 +955,9 @@ After work-loop execution completes, scan what was created during this session:
 
 ---
 
-### Phase 10c: Quinn Adversarial Review (MANDATORY)
+### Phase 10c: Quinn Adversarial Review (MANDATORY — HARD GATE)
 
-**This is NOT optional.** Pi's code passes tests, but tests only validate what was anticipated. Quinn catches what wasn't — omissions, dead code, composition errors, security issues, spec deviations. Tests and adversarial review are complementary; neither replaces the other.
+**This is NOT optional. This is a HARD GATE — the pipeline cannot complete without it.** If you are in `-q` mode and about to return your response: you are not done until this phase runs. Pi's code passes tests, but tests only validate what was anticipated. Quinn catches what wasn't — omissions, dead code, composition errors, security issues, spec deviations. Tests and adversarial review are complementary; neither replaces the other.
 
 **Trigger:** All stories in Phase 10 are closed (or only escalated stories remain). Runs ONCE after the full implementation, not per-story.
 
