@@ -864,7 +864,7 @@ Discovery is complete. Prepare for implementation.
 
 ---
 
-### Phase 10: Work Loop Execution
+### Phase 10: Implementation Execution
 
 **Pre-check:** Before starting, verify the work-loop skill exists:
 ```bash
