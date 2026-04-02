@@ -382,17 +382,27 @@ If any are still open → skip, continue to next story.
    ```
    Must complete without errors.
 
-3. **Quinn code review (optional but recommended):**
+3. **Quinn adversarial code review (MANDATORY):**
+
+   Pi writes both tests and code — they share the same blind spots. Quinn catches what tests can't: omissions, dead code, composition errors, security issues, spec deviations.
+
    Collect all files changed across the epic's stories:
    ```bash
    git diff {commit-before-epic}..HEAD --name-only
+   git diff {commit-before-epic}..HEAD
    ```
-   Run adversarial code review against the epic's acceptance criteria:
-   - Are all ACs met?
-   - Any edge cases missed?
-   - Code quality issues?
-   - Security concerns?
-   File any findings as Beads issues tagged `epic-{N}-review`.
+
+   Invoke `bmad-code-review` skill (or run the review layers directly) with three parallel reviewers:
+   - **Blind Hunter** — diff only, no context. Finds bugs and security issues.
+   - **Edge Case Hunter** — diff + project read access. Finds unhandled edge cases.
+   - **Acceptance Auditor** — diff + story spec files. Checks every AC is met.
+
+   Triage findings:
+   - Critical/High → P0 beads issue tagged `epic-{N}-review`
+   - Medium → P1 beads issue tagged `epic-{N}-review`
+   - Low/Defer → P2 beads issue tagged `epic-{N}-review`
+
+   **Fix loop:** If P0/P1 findings were filed, claim each, invoke Pi to fix, verify, and land. Loop until all P0/P1 `epic-{N}-review` issues are closed. P2 findings remain open for future sessions.
 
 4. **Epic report:**
    ```
@@ -400,11 +410,11 @@ If any are still open → skip, continue to next story.
    Stories: {count} closed
    Tests: {total passing}
    Build: {pass/fail}
-   Code review findings: {count} issues filed
+   Quinn review: {findings_total} findings ({fixed} fixed, {deferred} deferred, {dismissed} dismissed)
    ```
    Report via Telegram.
 
-This runs ONCE per epic, not per story. It's where deep quality review adds value — after all the pieces are in place and can be evaluated as a whole.
+This runs ONCE per epic, not per story. Deep adversarial review adds value after all the pieces are in place and can be evaluated as a whole.
 
 ### 11. Budget Guard
 
@@ -424,7 +434,7 @@ Per-story budget is enforced by the budget-enforcer Pi extension (not this skill
 
 - Pi CLI: `pi` command (invoked as child process, not MCP)
 - Pi agent definitions: `~/.pi/agents/tdd-coder.md`, `~/.pi/agents/failure-classifier.md`
-- Quinn review: runs once per epic (Step 10), not per story. Uses `bmad-code-review` skill or equivalent.
+- Quinn review: MANDATORY, runs once per epic (Step 10). Uses `bmad-code-review` skill with three parallel layers (Blind Hunter, Edge Case Hunter, Acceptance Auditor). Files findings as beads issues, fixes P0/P1 before proceeding.
 - Pi extensions: `beads-checkpoint.ts`, `failure-classifier.ts`, `budget-enforcer.ts`, `auto-committer.ts`
 - Hermes skills: `escalation-handler` (for failure routing), `health-fix` (pre-flight error resolution), `stack-detect` (pre-flight stack detection)
 - Hermes toolsets: `web` (for error research during stall escalation)

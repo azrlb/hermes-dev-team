@@ -938,9 +938,71 @@ After work-loop execution completes, scan what was created during this session:
 
 ---
 
+### Phase 10c: Quinn Adversarial Review (MANDATORY)
+
+**This is NOT optional.** Pi's code passes tests, but tests only validate what was anticipated. Quinn catches what wasn't — omissions, dead code, composition errors, security issues, spec deviations. Tests and adversarial review are complementary; neither replaces the other.
+
+**Trigger:** All stories in Phase 10 are closed (or only escalated stories remain). Runs ONCE after the full implementation, not per-story.
+
+**Why mandatory:** Pi writes both tests and code. When the same agent writes both, they share the same blind spots. The test suite validates "does what's here work?" — Quinn asks "what's missing? what breaks at scale? what doesn't match the spec?" These are fundamentally different questions.
+
+**Process:**
+
+**Step 1 — Collect the diff:**
+```bash
+git diff main...HEAD --stat
+git diff main...HEAD
+```
+This captures everything the vibe-loop session produced.
+
+**Step 2 — Collect spec context:**
+Gather all story files from `docs/stories/` that were part of this session (match by beads labels or epic tag). These provide the acceptance criteria Quinn reviews against.
+
+**Step 3 — Invoke `bmad-code-review` skill with three parallel review layers:**
+
+Hermes invokes the code review skill (or runs the review layers directly if the skill is unavailable):
+
+- **Blind Hunter** — receives diff ONLY. No project context, no spec. Finds bugs, security issues, logic errors purely from the code. Invoke via `bmad-review-adversarial-general`.
+- **Edge Case Hunter** — receives diff + project read access. Walks every branching path and boundary condition. Reports unhandled edge cases only. Invoke via `bmad-review-edge-case-hunter`.
+- **Acceptance Auditor** — receives diff + story spec files. Checks: AC violations, spec deviations, missing implementation, contradictions. Reviews against every AC in every story file.
+
+**Step 4 — Triage findings:**
+
+Classify each finding:
+- **Critical/High** → file as P0 beads issue tagged `quinn-review`
+- **Medium** → file as P1 beads issue tagged `quinn-review`
+- **Low/Defer** → file as P2 beads issue tagged `quinn-review`
+- **Dismiss** → drop (false positive, pre-existing, handled elsewhere)
+
+**Step 5 — Fix loop:**
+
+If P0 or P1 findings were filed:
+1. Run `bd ready --json` — Quinn review issues are now in the queue
+2. For each `quinn-review` issue:
+   - Claim it
+   - Invoke Pi to fix (include the finding detail, file path, and what's wrong in Pi's prompt)
+   - Verify the fix (re-run relevant tests + spot-check the specific finding)
+   - Land the fix (commit, close, push)
+3. Loop until all `quinn-review` P0/P1 issues are closed
+
+P2 findings remain open for future sessions — they're real but not blocking.
+
+**Step 6 — Report:**
+```
+Quinn Adversarial Review — Complete
+Findings: {total} ({critical} critical, {high} high, {medium} medium, {low} low)
+Fixed this session: {fixed_count}
+Deferred (P2): {deferred_count}
+Dismissed: {dismissed_count}
+```
+
+**Why not per-story:** Running three adversarial reviewers per story is expensive and catches less — many composition errors only appear when multiple stories interact. Running once after the full implementation sees the complete picture, like we just demonstrated with the Railway migration review.
+
+---
+
 ### Phase 11: End-to-End Validation
 
-All stories are implemented. Now verify the whole app works as a system, not just individual stories.
+All stories are implemented and adversarially reviewed. Now verify the whole app works as a system, not just individual stories.
 
 **Process:**
 
@@ -1070,6 +1132,7 @@ Vibe Loop — Complete
 Project: {name}
 Stories completed: {N}/{total}
 Stories escalated: {M}
+Quinn review: {findings_total} findings ({fixed} fixed, {deferred} deferred)
 E2E validation: {pass/partial/fail}
 Deployment: {deployed to {URL} / skipped / failed}
 Stories per epic: {epic breakdown}
