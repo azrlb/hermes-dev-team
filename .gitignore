@@ -1,0 +1,46 @@
+# Ephemeral / runtime state
+logs/
+sessions/
+sandboxes/
+audio_cache/
+image_cache/
+document_cache/
+response_store.db*
+state.db*
+models_dev_cache.json
+gateway.pid
+gateway_state.json
+auth.lock
+channel_directory.json
+
+# Secrets
+auth.json
+
+# Binary / large
+bin/
+
+# Node modules (MCP servers have their own)
+**/node_modules/
+
+# Runtime caches
+*.db-shm
+*.db-wal
+
+# Embedded repos
+hermes-agent/
+
+# Cron output (ephemeral)
+cron/output/
+cron/.tick.lock
+
+# Pairing / whatsapp runtime
+pairing/
+whatsapp/
+
+# Skills hub cache (regenerable)
+skills/.hub/index-cache/
+skills/.hub/audit.log
+skills/.hub/lock.json
+
+# Memory locks
+memories/*.lock

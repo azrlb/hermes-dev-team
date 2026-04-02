@@ -1,0 +1,72 @@
+{
+  "jobs": [
+    {
+      "id": "8194bfcabc06",
+      "name": "remind-bob-support-inboxes",
+      "prompt": "Send Bob a reminder that I still need the support inbox details for FlowInCash and Crispi if he hasn't already sent them. Keep it short, plain English, and include that I\u2019m ready to handle email support once I have them.",
+      "skills": [],
+      "skill": null,
+      "model": "openai/gpt-5.4-nano",
+      "provider": "openrouter",
+      "base_url": null,
+      "schedule": {
+        "kind": "cron",
+        "expr": "0 9 25 3 *",
+        "display": "0 9 25 3 *"
+      },
+      "schedule_display": "0 9 25 3 *",
+      "repeat": {
+        "times": 1,
+        "completed": 0
+      },
+      "enabled": true,
+      "state": "scheduled",
+      "paused_at": null,
+      "paused_reason": null,
+      "created_at": "2026-03-21T20:45:33.559506-07:00",
+      "next_run_at": "2027-03-25T09:00:00-07:00",
+      "last_run_at": null,
+      "last_status": null,
+      "last_error": null,
+      "deliver": "origin",
+      "origin": {
+        "platform": "telegram",
+        "chat_id": "8428062813",
+        "chat_name": "Bob Banks",
+        "thread_id": null
+      }
+    },
+    {
+      "id": "770cfee9f064",
+      "name": "auto-update-pi-hermes",
+      "prompt": "Check for updates to Pi and Hermes. Run: npm view @mariozechner/pi-coding-agent version to get latest Pi version, then pi --version to get current. If outdated run npm install -g @mariozechner/pi-coding-agent@latest. For Hermes run cd ~/hermes-agent and git fetch and check if behind origin/main. If behind run hermes update. Report results via Telegram.",
+      "skills": [],
+      "skill": null,
+      "model": null,
+      "provider": null,
+      "base_url": null,
+      "schedule": {
+        "kind": "cron",
+        "expr": "0 3 * * 0",
+        "display": "0 3 * * 0"
+      },
+      "schedule_display": "0 3 * * 0",
+      "repeat": {
+        "times": null,
+        "completed": 0
+      },
+      "enabled": true,
+      "state": "scheduled",
+      "paused_at": null,
+      "paused_reason": null,
+      "created_at": "2026-03-31T19:42:55.047405-07:00",
+      "next_run_at": "2026-04-05T03:00:00-07:00",
+      "last_run_at": null,
+      "last_status": null,
+      "last_error": null,
+      "deliver": "telegram",
+      "origin": null
+    }
+  ],
+  "updated_at": "2026-03-31T19:42:55.047961-07:00"
+}

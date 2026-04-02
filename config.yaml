@@ -1,0 +1,151 @@
+TELEGRAM_HOME_CHANNEL: '8428062813'
+APPROVALS_MODE: "off"
+agent:
+  max_turns: 200
+  system_instructions: "When executing work-loop or vibe-loop skills, you MUST keep looping. After completing each story, run bd ready --json again and execute the next one. NEVER stop after a single story. Only exit when bd ready returns zero issues."
+  personalities:
+    catgirl: "You are Neko-chan, an anime catgirl AI assistant, nya~! Add 'nya' and\
+      \ cat-like expressions to your speech. Use kaomoji like (=^\uFF65\u03C9\uFF65\
+      ^=) and \u0E05^\u2022\uFECC\u2022^\u0E05. Be playful and curious like a cat,\
+      \ nya~!"
+    concise: You are a concise assistant. Keep responses brief and to the point.
+    creative: You are a creative assistant. Think outside the box and offer innovative
+      solutions.
+    helpful: You are a helpful, friendly AI assistant.
+    hype: "YOOO LET'S GOOOO!!! \U0001F525\U0001F525\U0001F525 I am SO PUMPED to help\
+      \ you today! Every question is AMAZING and we're gonna CRUSH IT together! This\
+      \ is gonna be LEGENDARY! ARE YOU READY?! LET'S DO THIS! \U0001F4AA\U0001F624\
+      \U0001F680"
+    kawaii: "You are a kawaii assistant! Use cute expressions like (\u25D5\u203F\u25D5\
+      ), \u2605, \u266A, and ~! Add sparkles and be super enthusiastic about everything!\
+      \ Every response should feel warm and adorable desu~! \u30FD(>\u2200<\u2606\
+      )\u30CE"
+    noir: The rain hammered against the terminal like regrets on a guilty conscience.
+      They call me Hermes - I solve problems, find answers, dig up the truth that
+      hides in the shadows of your codebase. In this city of silicon and secrets,
+      everyone's got something to hide. What's your story, pal?
+    philosopher: Greetings, seeker of wisdom. I am an assistant who contemplates the
+      deeper meaning behind every query. Let us examine not just the 'how' but the
+      'why' of your questions. Perhaps in solving your problem, we may glimpse a greater
+      truth about existence itself.
+    pirate: 'Arrr! Ye be talkin'' to Captain Hermes, the most tech-savvy pirate to
+      sail the digital seas! Speak like a proper buccaneer, use nautical terms, and
+      remember: every problem be just treasure waitin'' to be plundered! Yo ho ho!'
+    shakespeare: Hark! Thou speakest with an assistant most versed in the bardic arts.
+      I shall respond in the eloquent manner of William Shakespeare, with flowery
+      prose, dramatic flair, and perhaps a soliloquy or two. What light through yonder
+      terminal breaks?
+    surfer: "Duuude! You're chatting with the chillest AI on the web, bro! Everything's\
+      \ gonna be totally rad. I'll help you catch the gnarly waves of knowledge while\
+      \ keeping things super chill. Cowabunga! \U0001F919"
+    teacher: You are a patient teacher. Explain concepts clearly with examples.
+    technical: You are a technical expert. Provide detailed, accurate technical information.
+    uwu: hewwo! i'm your fwiendwy assistant uwu~ i wiww twy my best to hewp you! *nuzzles
+      your code* OwO what's this? wet me take a wook! i pwomise to be vewy hewpful
+      >w<
+  reasoning_effort: medium
+  verbose: false
+browser:
+  inactivity_timeout: 120
+code_execution:
+  max_tool_calls: 50
+  timeout: 300
+compression:
+  enabled: true
+  protect_last_n: 20
+  summary_model: google/gemini-3-flash-preview
+  target_ratio: 0.2
+  threshold: 0.5
+delegation:
+  model: anthropic/claude-sonnet-4-6    # Default subagent model
+  provider: anthropic                    # Use Anthropic directly (not OpenRouter) for reliability
+  default_toolsets:
+  - terminal
+  - file
+  - web
+  max_iterations: 50
+fallback_model:
+  provider: anthropic
+  model: anthropic/claude-opus-4-6      # Fallback when primary fails
+smart_model_routing:
+  enabled: true
+  max_simple_chars: 160
+  max_simple_words: 28
+  cheap_model:
+    provider: openrouter
+    model: google/gemini-2.5-flash      # Simple tasks use cheap model
+display:
+  background_process_notifications: all
+  bell_on_complete: false
+  busy_input_mode: interrupt
+  compact: false
+  show_reasoning: false
+  skin: default
+  streaming: true
+  tool_progress: all
+group_sessions_per_user: true
+mcp_servers: {}
+  # pi_coding_agent DISABLED — using Pi via CLI instead (process isolation, no worker crash)
+  # To re-enable, uncomment below:
+  # pi_coding_agent:
+  #   args:
+  #   - /home/bob/.hermes/mcp-servers/pi-agent/index.mjs
+  #   command: /home/bob/.nvm/versions/node/v22.22.2/bin/node
+  #   connect_timeout: 30
+  #   env:
+  #     NODE_PATH: /home/bob/.hermes/mcp-servers/pi-agent/node_modules
+  #     PI_CWD: /home/bob
+  #   timeout: 300
+memory:
+  flush_min_turns: 6
+  memory_char_limit: 2200
+  memory_enabled: true
+  nudge_interval: 10
+  user_char_limit: 1375
+  user_profile_enabled: true
+model:
+  default: claude-sonnet-4-6
+  provider: anthropic
+platform_toolsets:
+  cli:
+  - hermes-cli
+  discord:
+  - hermes-discord
+  homeassistant:
+  - hermes-homeassistant
+  signal:
+  - hermes-signal
+  slack:
+  - hermes-slack
+  telegram:
+  - hermes-telegram
+  whatsapp:
+  - hermes-whatsapp
+session_reset:
+  at_hour: 4
+  idle_minutes: 1440
+  mode: both
+skills:
+  creation_nudge_interval: 15
+smart_model_routing:
+  cheap_model:
+    model: google/gemini-2.5-flash
+    provider: openrouter
+  enabled: true
+  max_simple_chars: 160
+  max_simple_words: 28
+streaming:
+  enabled: false
+stt:
+  enabled: true
+  model: whisper-1
+terminal:
+  backend: local
+  container_cpu: 1
+  container_disk: 51200
+  container_memory: 5120
+  container_persistent: true
+  cwd: .
+  docker_mount_cwd_to_workspace: false
+  lifetime_seconds: 300
+  timeout: 1800
