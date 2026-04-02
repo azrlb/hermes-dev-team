@@ -88,6 +88,15 @@ Both channels are required. AGENTS.md provides project-wide rules; story Dev Not
 
 ## Pipeline
 
+### Yolo Mode — No Human Gates
+
+**When invoked with `--yolo`, the entire pipeline runs end-to-end with ZERO human gates.** Do NOT pause between phases to ask "want to continue?" or "ready to proceed?" or present a summary and wait. The only acceptable halts in yolo mode are:
+- Idea hunting selection (Phase 0 — user must pick which idea to build)
+- Unrecoverable errors (tool missing, git push failed after retry)
+- Secrets needed for deployment (Phase 12 — never auto-fill API keys)
+
+Everything else flows continuously: discovery → implementation → validation → deploy.
+
 ### Phase Transition Rules
 
 Before starting any phase (except Phase 0/1), validate the previous phase's output:
@@ -860,7 +869,7 @@ Discovery is complete. Prepare for implementation.
    Beads issues: {count}
    Starting implementation...
    ```
-6. Transition to Phase 10
+6. **Immediately transition to Phase 10.** Do NOT pause, ask for confirmation, or wait for user input. In `--yolo` mode the pipeline is continuous — discovery flows directly into implementation with zero human gates. Even in interactive mode, proceed unless the user explicitly said to stop after discovery.
 
 ---
 
