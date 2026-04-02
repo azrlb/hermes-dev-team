@@ -218,7 +218,7 @@ Per story:
                   → Deep Research & Rearchitect (autonomous, no human dead end)
   8. LAND      → targeted regression (closed stories' test files only, NOT full suite)
                 → git commit → bd close → git push → report
-  9. EPIC CHECK → all stories in epic closed? → targeted epic test suite + Quinn review
+  9. EPIC CHECK → all stories in epic closed? → targeted epic test suite
   9a. BLOCKER REVISIT → any blocked stories from this session?
                 → re-run tests (side-effect fixes may have resolved them)
                 → still failing? → Opus → Deep Research & Rearchitect
@@ -235,7 +235,7 @@ Per story:
 - **Targeted regression** — only closed stories' test files, not full suite. Prevents 30+ minute timeouts on large codebases.
 - **Blocker revisit** — after all ready stories done, retries blocked stories. Side-effect fixes from other stories may have resolved blockers.
 - **No human dead ends** — Deep Research & Rearchitect is the final autonomous tier. Bob is not a developer — never escalate code issues to him.
-- **No per-story Quinn** — Pi validates its own tests. Quinn runs once per epic for deep review.
+- **Quinn is a hard gate** — Quinn adversarial review (Phase 10c) runs ONCE after all stories complete, not per-story. It's mandatory — vibe-loop cannot declare completion without it. Three parallel layers: Blind Hunter, Edge Case Hunter, Acceptance Auditor. P0/P1 findings are auto-filed as beads and fixed before push.
 - **Progress-based retries** — no "3 strikes" limit. Keeps going while making progress. Escalates (model upgrade, web research, Deep Research) when stalled.
 - **Claim identity** — Hermes runs as Bob's git identity. "Bob Banks" assignees are Hermes's own claims.
 
@@ -377,6 +377,8 @@ Phase 8:  File Beads issues              Phase 8:  (same)
 Phase 9:  Checkpoint & handoff           Phase 9:  (same)
 Phase 10: Work-loop execution            Phase 10: (same)
                                          Phase 10b: Pattern Capture (update project-context.md)
+                                         Phase 10c: Quinn Adversarial Review (MANDATORY HARD GATE)
+                                                    3 parallel layers → triage → file beads → fix P0/P1
 Phase 11: E2E validation                 Phase 11: (same + integration check)
 Phase 12: Deploy to Railway              Phase 12: (same)
 Phase 13: Completion report              Phase 13: (same)
@@ -409,6 +411,41 @@ hermes chat -s dev-team/vibe-loop --yolo --model anthropic/claude-sonnet-4-6 \
 **Brownfield auto-detection:** If `package.json` + `AGENTS.md` + `.beads/` exist in the working directory, vibe-loop auto-detects brownfield and skips the analyst phase. No env var needed.
 
 **Redundancy detection:** If you've already done some phases manually (wrote a PRD with John, ran the architect), vibe-loop detects existing artifacts and asks whether to use them or regenerate. In `--yolo` mode it auto-skips redundant phases.
+
+### Resuming from Existing Artifacts
+
+Vibe-loop looks for artifacts at specific `_output/` paths. If your existing docs are elsewhere (e.g., `_bmad-output/planning-artifacts/prd.md` from BMAD), Hermes won't find them and will regenerate.
+
+**Two options to resume from where you left off:**
+
+```bash
+# Option 1: Tell Hermes where artifacts are in the prompt
+hermes chat -s dev-team/vibe-loop --yolo \
+  -q "PRD is at _bmad-output/planning-artifacts/prd.md. \
+      Architecture is at _bmad-output/planning-artifacts/architecture.md. \
+      Skip to story creation (Phase 7) and continue from there."
+
+# Option 2: Symlink artifacts to expected paths
+mkdir -p _output
+ln -s ../_bmad-output/planning-artifacts/prd.md _output/prd.md
+ln -s ../_bmad-output/planning-artifacts/architecture.md _output/architecture.md
+hermes chat -s dev-team/vibe-loop --yolo -q "Build feature X"
+```
+
+**Option 1 is recommended** — explicit is better than implicit. Hermes reads the prompt, finds the files, and picks up from the right phase.
+
+**Expected artifact paths and their phases:**
+
+| Phase | Expected path | What it is |
+|-------|--------------|------------|
+| 0 | `_output/analyst-report.md` | Market research |
+| 1 | `_output/idea-statement.md` | Idea capture |
+| 3 | `_output/product-brief.md` or `_output/feature-brief.md` | Brief |
+| 4 | `_output/prd.md` or `_output/feature-spec.md` | PRD / spec |
+| 5 | `_output/architecture.md` | Architecture design |
+| 6 | `_output/epics.md` | Epic breakdown |
+| 7 | `docs/stories/*.md` + test files | Story specs + TDD tests |
+| 8 | Beads issues with matching labels | Filed work items |
 
 ```bash
 # Work loop — execute existing stories only
@@ -481,16 +518,28 @@ hermes chat -s dev-team/work-loop --yolo --model anthropic/claude-sonnet-4-6
 - **Machine resources** — CPU/memory for concurrent sessions + test runners
 - **Telegram routing** — if all report to the same chat, use project prefixes to tell them apart
 
-### Parallel Lanes Within One Project
+### Parallel Tasks Within One Project
 
-Use git worktrees so each lane has its own working directory:
+Use `--worktree` flag — Hermes auto-creates an isolated git worktree. No manual setup:
 
 ```bash
-# Create worktrees per lane
+# Task 1: runs on main (or creates its own branch)
+hermes chat -s dev-team/vibe-loop --yolo \
+  -q "Build chat widget for Crispi"
+
+# Task 2: runs in isolated worktree (parallel, no conflicts)
+hermes chat -s dev-team/vibe-loop --yolo --worktree \
+  -q "Add push notifications to Crispi PWA"
+```
+
+Each `--worktree` instance gets its own branch and working directory. Merge branches back to main when done.
+
+**Manual worktrees** for lane-based parallelism (label-filtered):
+
+```bash
 git worktree add .worktrees/lane-b -b lane-b
 git worktree add .worktrees/lane-c -b lane-c
 
-# Launch each with label filter
 cd .worktrees/lane-b && hermes chat -s dev-team/work-loop --yolo \
   -q "Read AGENTS.md. Run bd ready -l lane-b --json. Execute ready stories."
 
@@ -498,7 +547,7 @@ cd .worktrees/lane-c && hermes chat -s dev-team/work-loop --yolo \
   -q "Read AGENTS.md. Run bd ready -l lane-c --json. Execute ready stories."
 ```
 
-Merge branches back to main when lanes complete. Conflicts are typically small (route registrations, index files).
+Conflicts are typically small (route registrations, index files).
 
 ## File Reference
 
@@ -508,7 +557,7 @@ Merge branches back to main when lanes complete. Conflicts are typically small (
 | Pi CLI | `pi` (global install) | Coding agent — invoked as child process, not MCP |
 | tdd-coder | `~/.pi/agents/tdd-coder.md` | Pi agent: implements code to make tests pass |
 | failure-classifier | `~/.pi/agents/failure-classifier.md` | Pi agent: diagnoses failures |
-| Quinn review | `bmad-code-review` skill | Runs once per epic, not per story |
+| Quinn review | `bmad-code-review` skill | MANDATORY after every vibe-loop implementation (Phase 10c hard gate) |
 | work-loop | `~/.hermes/skills/dev-team/work-loop/SKILL.md` | Hermes skill: story execution |
 | vibe-loop | `~/.hermes/skills/dev-team/vibe-loop/SKILL.md` | Hermes skill: idea-to-code pipeline |
 | stack-detect | `~/.hermes/skills/dev-team/stack-detect/SKILL.md` | Hermes skill: auto-detect project stack, write to AGENTS.md |
