@@ -86,7 +86,7 @@ Loop → next story until bd ready returns zero
 - **[Pi](https://github.com/badlogic/pi-mono/tree/main/packages/coding-agent) via CLI** — each story runs as a fresh `pi -q` process. Crashes don't affect Q.
 - **Cross-check** — Q independently re-runs tests after Pi claims PASS.
 - **No human dead ends** — every failure path resolves autonomously (escalation → Opus → web research → deep research).
-- **Quinn is a hard gate** — adversarial review is mandatory before any code ships.
+- **Quinn is a hard gate** — 3-layer parallel adversarial review (Blind Hunter, Edge Case Hunter, Acceptance Auditor) is mandatory before any code ships.
 - **Progress-based retries** — no arbitrary limits. Keeps going while making progress.
 - **Brownfield-first** — Phase 2 reads project-context.md and scans existing patterns before writing new code. Creates project-context.md if missing.
 
