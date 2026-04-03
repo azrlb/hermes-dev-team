@@ -356,32 +356,45 @@ The dev team has two entry points:
 | Mode | Skill | What It Does | When to Use |
 |------|-------|--------------|-------------|
 | **Vibe Loop** | `dev-team/vibe-loop` | THE loop — handles greenfield AND brownfield | **Default for everything.** Single entry point. |
-| **Work Loop** | `dev-team/work-loop` | Internal execution engine (Phase 10 of vibe-loop) | Called by vibe-loop. Can also run standalone if stories + tests already exist. |
+| **Work Loop** | `dev-team/work-loop` | ⚠ DEPRECATED — internal engine only | Called by vibe-loop as Phase 10. Do NOT invoke directly — it skips Quinn review and phases 10b-13. |
 
 Vibe-loop is the successor to work-loop. It wraps work-loop as its Phase 10 execution engine while adding discovery, project immersion, and validation phases around it.
 
-**Vibe Loop pipeline (15 phases):**
+**Vibe Loop pipeline (16 phases — each has a number AND a BMAD agent name):**
 ```
-GREENFIELD:                              BROWNFIELD:
-Phase 0:  Analyst (research/validate)    Phase 0:  AUTO-SKIPPED
-Phase 1:  Capture idea statement         Phase 1:  Capture task description
-Phase 2:  Project scaffold               Phase 2:  Deep Project Immersion
-                                                   (read project-context.md, deep pattern
-                                                    scan, inject rules into AGENTS.md)
-Phase 3:  Product brief                  Phase 3:  Feature brief (lean)
-Phase 4:  Full PRD                       Phase 4:  Feature spec (lean)
-Phase 5:  Architecture design            Phase 5:  Integration architecture ("how does this fit?")
-Phase 6:  Epics & stories breakdown      Phase 6:  (same)
-Phase 7:  Story specs + TDD tests        Phase 7:  Stories with embedded Coding Rules
-Phase 8:  File Beads issues              Phase 8:  (same)
-Phase 9:  Checkpoint & handoff           Phase 9:  (same)
-Phase 10: Work-loop execution            Phase 10: (same)
-                                         Phase 10b: Pattern Capture (update project-context.md)
-                                         Phase 10c: Quinn Adversarial Review (MANDATORY HARD GATE)
-                                                    3 parallel layers → triage → file beads → fix P0/P1
-Phase 11: E2E validation                 Phase 11: (same + integration check)
-Phase 12: Deploy to Railway              Phase 12: (same)
-Phase 13: Completion report              Phase 13: (same)
+Number    BMAD Name         GREENFIELD                   BROWNFIELD
+Phase 0   analyst           Research/validate            AUTO-SKIPPED
+Phase 1   brief-capture     Capture idea statement       Capture task description
+Phase 2   immersion         Project scaffold             Deep Project Immersion
+                                                         (read project-context.md, deep pattern
+                                                          scan, inject rules into AGENTS.md)
+Phase 3   product-brief     Product brief                Feature brief (lean)
+Phase 4   prd               Full PRD                     Feature spec (lean)
+Phase 5   architecture      Architecture design          Integration architecture ("how does this fit?")
+Phase 6   epics             Epics & stories breakdown    (same)
+Phase 7a  story-specs       SM writes story specs        Stories with embedded Coding Rules
+                            (AC, tasks, dev notes)
+Phase 7b  tdd               QA writes failing TDD tests  (same)
+                            from story specs
+Phase 8   beads-filing      File Beads issues            (same)
+Phase 9   checkpoint        Checkpoint & handoff         (same)
+Phase 10  dev               Work-loop execution          (same)
+Phase 10b pattern-capture   (skipped)                    Update project-context.md
+Phase 10c quinn-review      Quinn Adversarial Review     (same — MANDATORY HARD GATE)
+                            3 parallel layers → triage → file beads → fix P0/P1
+Phase 11  e2e-validation    E2E validation               (same + integration check)
+Phase 12  deploy            Deploy to Railway            (same — preview deploy on feature branch)
+Phase 13  report            Completion report            (same)
+```
+
+**Use BMAD names in prompts — both forms work:**
+```bash
+hermes chat -s dev-team/vibe-loop --yolo -q "Add X to Crispi. Start at dev."
+hermes chat -s dev-team/vibe-loop --yolo -q "Build X. Start at tdd."
+hermes chat -s dev-team/vibe-loop --yolo -q "Build X. Start at architecture."
+hermes chat -s dev-team/vibe-loop --yolo -q "Run quinn-review on current branch."
+# Numbered phases still work too:
+hermes chat -s dev-team/vibe-loop --yolo -q "Build X. Start at Phase 10."
 ```
 
 **Brownfield — the key difference:** Before writing any code, vibe-loop becomes **intimate** with the project. Phase 2 reads actual service files, route files, test files to understand HOW the project works — not just what files exist. It produces a reuse-first Pattern Playbook and injects critical rules into AGENTS.md so Pi follows them. Only creates new code when no existing pattern can be reused.
@@ -436,16 +449,17 @@ hermes chat -s dev-team/vibe-loop --yolo -q "Build feature X"
 
 **Expected artifact paths and their phases:**
 
-| Phase | Expected path | What it is |
-|-------|--------------|------------|
-| 0 | `_output/analyst-report.md` | Market research |
-| 1 | `_output/idea-statement.md` | Idea capture |
-| 3 | `_output/product-brief.md` or `_output/feature-brief.md` | Brief |
-| 4 | `_output/prd.md` or `_output/feature-spec.md` | PRD / spec |
-| 5 | `_output/architecture.md` | Architecture design |
-| 6 | `_output/epics.md` | Epic breakdown |
-| 7 | `docs/stories/*.md` + test files | Story specs + TDD tests |
-| 8 | Beads issues with matching labels | Filed work items |
+| Phase | BMAD Name | Expected path | What it is |
+|-------|-----------|--------------|------------|
+| 0 | analyst | `_output/analyst-report.md` | Market research |
+| 1 | brief-capture | `_output/idea-statement.md` | Idea capture |
+| 3 | product-brief | `_output/product-brief.md` or `_output/feature-brief.md` | Brief |
+| 4 | prd | `_output/prd.md` or `_output/feature-spec.md` | PRD / spec |
+| 5 | architecture | `_output/architecture.md` | Architecture design |
+| 6 | epics | `_output/epics.md` | Epic breakdown |
+| 7a | story-specs | `docs/stories/*.md` | Story specs (AC, tasks, dev notes) |
+| 7b | tdd | `src/**/__tests__/*.test.ts` (or language equivalent) | TDD test files |
+| 8 | beads-filing | Beads issues with matching labels | Filed work items |
 
 ```bash
 # Work loop — execute existing stories only
@@ -557,7 +571,7 @@ Conflicts are typically small (route registrations, index files).
 | Pi CLI | `pi` (global install) | Coding agent — invoked as child process, not MCP |
 | tdd-coder | `~/.pi/agents/tdd-coder.md` | Pi agent: implements code to make tests pass |
 | failure-classifier | `~/.pi/agents/failure-classifier.md` | Pi agent: diagnoses failures |
-| Quinn review | `bmad-code-review` skill | MANDATORY after every vibe-loop implementation (Phase 10c hard gate) |
+| Quinn review | `bmad-code-review` skill | MANDATORY after every vibe-loop implementation (quinn-review / Phase 10c hard gate) |
 | work-loop | `~/.hermes/skills/dev-team/work-loop/SKILL.md` | Hermes skill: story execution |
 | vibe-loop | `~/.hermes/skills/dev-team/vibe-loop/SKILL.md` | Hermes skill: idea-to-code pipeline |
 | stack-detect | `~/.hermes/skills/dev-team/stack-detect/SKILL.md` | Hermes skill: auto-detect project stack, write to AGENTS.md |
