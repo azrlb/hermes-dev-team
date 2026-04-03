@@ -4,6 +4,42 @@
 
 A portable AI dev team that can be dropped into any project directory. Hermes orchestrates, Pi codes, Beads tracks work. You manage via Telegram or CLI.
 
+## Quick Start — Phase Names
+
+Every phase has a BMAD agent name. Use either name or number:
+
+```bash
+# Full pipeline — auto-detects brownfield/greenfield
+q chat -s dev-team/vibe-loop --yolo -q "Build feature X"
+
+# Skip to specific phases
+q chat -s dev-team/vibe-loop --yolo -q "Build X. Start at dev."           # Phase 10 — code only
+q chat -s dev-team/vibe-loop --yolo -q "Build X. Start at tdd."           # Phase 7b — write tests, then code
+q chat -s dev-team/vibe-loop --yolo -q "Build X. Start at story-specs."   # Phase 7a — write specs + tests + code
+q chat -s dev-team/vibe-loop --yolo -q "Build X. Start at architecture."  # Phase 5 — design first
+q chat -s dev-team/vibe-loop --yolo -q "Run quinn-review."                # Phase 10c — adversarial review only
+```
+
+| Phase | BMAD Name | Who | What |
+|-------|-----------|-----|------|
+| 0 | analyst | Analyst | Research & validate |
+| 1 | brief-capture | PM | Capture idea/task |
+| 2 | immersion | Enforcer | Deep project scan |
+| 3 | product-brief | PM | Product/feature brief |
+| 4 | prd | PM | PRD or feature spec |
+| 5 | architecture | Architect | Solution design |
+| 6 | epics | SM | Epic & story breakdown |
+| 7a | story-specs | SM | Story specs with AC |
+| 7b | tdd | QA | Failing TDD tests |
+| 8 | beads-filing | SM | File beads issues |
+| 9 | checkpoint | SM | Checkpoint & handoff |
+| 10 | dev | Dev (Pi) | Code to pass tests |
+| 10b | pattern-capture | Enforcer | Update project-context |
+| 10c | quinn-review | QA | Adversarial review (hard gate) |
+| 11 | e2e-validation | QA | End-to-end validation |
+| 12 | deploy | DevOps | Deploy to Railway |
+| 13 | report | Tech Writer | Completion report |
+
 ## Architecture
 
 ```
