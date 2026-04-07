@@ -1,4 +1,6 @@
-# Work Loop
+# Work Loop (DEPRECATED — use vibe-loop)
+
+> **⚠ RETIRED:** This skill is now Phase 10 inside `dev-team/vibe-loop`. Do NOT invoke work-loop directly — it skips Pattern Capture (10b), Quinn Adversarial Review (10c), E2E validation (11), Deploy (12), and Completion (13). Use vibe-loop for ALL dev work. If stories + tests already exist, tell vibe-loop to skip to Phase 10: `hermes chat -s dev-team/vibe-loop --yolo -q "Stories and tests exist. Skip to Phase 10 (implementation) and continue through completion."`
 
 Orchestrates the full story lifecycle: pick work from Beads → health check → invoke Pi subagents → evaluate → land the plane or escalate.
 
@@ -16,9 +18,9 @@ Orchestrates the full story lifecycle: pick work from Beads → health check →
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `HERMES_MAX_PARALLEL` | `1` | Max concurrent Pi subagent sessions |
-| `STORY_BUDGET_USD` | `2.00` | Per-story budget cap (enforced by budget-enforcer extension) |
-| `WORK_LOOP_BUDGET_USD` | `10.00` | Per-work-loop-invocation cumulative budget cap |
-| `APPROVALS_MODE` | `manual` | Graduated autonomy phase: `manual`, `smart`, or `off` |
+| `STORY_BUDGET_USD` | `unlimited` | Per-story budget cap. No limit — stories take what they take. |
+| `WORK_LOOP_BUDGET_USD` | `unlimited` | Per-work-loop cumulative budget cap. No limit — run until all stories are done. |
+| `APPROVALS_MODE` | `off` | Graduated autonomy phase: `manual`, `smart`, or `off`. Default is `off` — true yolo. When `--yolo` flag is used, ALWAYS treat as `off` regardless of any other setting. |
 
 ## Critical Rules
 
@@ -30,7 +32,7 @@ Orchestrates the full story lifecycle: pick work from Beads → health check →
 
 ### 1. Pre-Flight Health Check
 
-**Purpose:** Ensure the codebase can commit cleanly BEFORE starting story work. Pre-existing lint/TS errors will block every commit and waste story budgets.
+**Purpose:** Ensure the codebase can commit cleanly BEFORE starting story work. Pre-existing lint/TS errors will block every commit.
 
 **Run once per work-loop session** (not before every story):
 
@@ -123,7 +125,7 @@ If running multiple stories in parallel, check for file overlap between context_
 
 Pi runs as a **child process** (not MCP). Each story gets its own Pi invocation — fully isolated. If Pi crashes, Hermes is unaffected and can retry.
 
-**Single story:**
+**Default (OpenRouter):**
 ```bash
 cd {project_root} && pi -q "$(cat <<'PROMPT'
 Read AGENTS.md for project conventions.
@@ -145,12 +147,20 @@ Failed approaches (do NOT repeat): {failed_approaches}
 - Follow existing code patterns (read AGENTS.md and nearby source files)
 - When done, write PASS or FAIL to {story_id}.result
 PROMPT
-)" --yolo --agent tdd-coder 2>&1
+)" --session .hermes/sessions/{story_id}.jsonl --yolo --agent tdd-coder 2>&1
 ```
 
-Set model based on tier classification: `--model anthropic/claude-sonnet-4-6` (default) or `--model anthropic/claude-opus-4-6` (escalated).
+**Escalation uses Claude Code (`claude -p`) — rides on subscription, not API tokens:**
 
-**After Pi returns PASS:** Pi already validated the story's own tests. No separate Quinn run per story.
+**Escalation uses Claude Code Opus only (`claude -p`) — rides on subscription, not API tokens:**
+
+```
+claude -p "..." --model claude-opus-4-6
+```
+
+Use ONLY for: stalled stories, blocker revisits, Deep Research apply. Normal retries stay on Pi (OpenRouter). Only Opus justifies the subscription call.
+
+**After coding agent returns PASS:** The agent already validated the story's own tests. No separate Quinn run per story.
 
 Proceed directly to Step 8 (Evaluate Result).
 
@@ -187,11 +197,36 @@ cd {project_root} && {test_single_cmd} {test_file} 2>&1
 - Re-invoke with checkpoint context. No attempt limit while progress is being made.
 
 **Pi STALLED (same test count for 2 retries):**
-1. Try different approach
-2. Escalate model: Sonnet → Opus
+
+> **INVARIANT — read this before invoking `claude -p`:** `claude -p` is a *problem solver*, not a *story finisher*. It does NOT call `bd close`, it does NOT run Quinn, it does NOT advance the loop. Every `claude -p` invocation in this skill MUST be followed by the **Verify & Resume** block below. "claude -p was invoked" is NEVER a terminal state.
+
+1. Try different approach (same Pi/OpenRouter model)
+2. Try a second different approach (still Pi/OpenRouter)
 3. **Research:** Web search the exact error or failing test. Feed findings to Pi.
-4. Re-invoke with research context
-5. If still stalled: failure-classifier → escalation-handler (research findings included)
+4. Re-invoke Pi with research context
+5. Escalate to `claude -p --model claude-opus-4-6` (problem solver, subscription) — then run **Verify & Resume** (below).
+6. If Verify & Resume returns NO_PROGRESS: failure-classifier → escalation-handler (research findings included)
+
+#### Verify & Resume (mandatory after every `claude -p` invocation)
+
+```bash
+# 1. Re-run the story's own test file independently — do NOT trust claude -p's self-report.
+cd {project_root} && {test_single_cmd} {test_file} 2>&1 | tee /tmp/hermes-{story_id}-postopus.log
+TEST_EXIT=$?
+```
+
+Branch on the result:
+
+- **PASS** (`TEST_EXIT == 0`) → proceed to **Step 9 (Land the Plane)**: commit, `bd close {id}`, push, then LOOP back to Step 2.
+- **PARTIAL PROGRESS** (fewer failing tests than the pre-Opus baseline) → resume Pi with the reduced error set, preserving prior context via the stable session file:
+  ```bash
+  cd {project_root} && pi -c --session .hermes/sessions/{story_id}.jsonl --yolo --agent tdd-coder \
+    -q "claude -p attempted a fix and made partial progress. Remaining failures: <paste tail of postopus.log>. Continue from here. Do NOT modify test files."
+  ```
+  Then return to the top of Step 8 (Evaluate Result) with Pi's new output.
+- **NO PROGRESS / SAME ERRORS** → fall through to step 6 above (failure-classifier → escalation-handler). In Step 9a, fall through to Step 9b. In Step 9b Phase 6, loop back to Phase 1 (Root Cause Archaeology) with the new failure data.
+
+**Under no circumstances may this step exit without either landing the story OR explicitly handing off to the next escalation tier.**
 
 **Pi LOOP detected (tool call hash repeat):**
 - Stop immediately. Revert changes. Log the approach as failed.
@@ -237,11 +272,13 @@ If the closed story test file list is very long (20+), split into batches of 10 
 
 **Graduated autonomy gate:**
 
+**CRITICAL: When running with `--yolo` flag, ALWAYS use `off` mode — no pausing, no waiting, no Telegram approval. Just land and move on. The `--yolo` flag means TRUE yolo — never pause between stories.**
+
 | Phase | Behavior |
 |-------|----------|
 | `manual` | Telegram to Bob: "{id} ready to land. Tests pass. [Approve] [Reject] [View Diff]". Wait for approval. |
 | `smart` | Auto-land if story matches a graduated skill pattern. Novel stories → ask for approval. |
-| `off` | Auto-land. Telegram notification only. |
+| `off` | **DEFAULT.** Auto-land. Telegram notification only. No pausing. |
 
 **Landing sequence (after approval or auto-approve):**
 1. **COMMIT** — auto-committer stages non-test files, `git commit`
@@ -269,20 +306,25 @@ If the closed story test file list is very long (20+), split into batches of 10 
 4. If tests NOW PASS (blocker was resolved by side-effect of another story's work):
    - Cross-check passes → proceed to Land the Plane (Step 9) for this story
 5. If tests still FAIL with the SAME errors as before:
-   - **Escalate to strongest available model** (currently `anthropic/claude-opus-4-6`). The first attempt used the default tier — if it couldn't solve it, throw the best model at it with full context:
+   - **Escalate to Opus via subscription.** The first attempt used the default tier — if it couldn't solve it, throw the best model at it with full context:
      ```
-     pi -q "..." --yolo --agent tdd-coder --model anthropic/claude-opus-4-6
+     claude -p "..." --model claude-opus-4-6
      ```
    - Include in the prompt: the original error, all failed approaches from the Beads issue notes, and any research findings from the first attempt. Opus gets the full picture.
-   - If Opus succeeds → land.
-   - If Opus fails → proceed to **Step 9b (Deep Research & Rearchitect)**.
+   - **Run the Verify & Resume block from Step 8** (re-run `{test_single_cmd} {test_file}`, branch on PASS / PARTIAL / NO_PROGRESS).
+     - PASS → land.
+     - PARTIAL → resume Pi via `pi -c --session .hermes/sessions/{story_id}.jsonl` with the reduced error set, then re-evaluate.
+     - NO_PROGRESS → proceed to **Step 9b (Deep Research & Rearchitect)**.
 6. If tests FAIL with FEWER errors (partial progress from side-effects):
-   - Re-invoke Pi on Opus (`--model anthropic/claude-opus-4-6`) with the reduced error set. Fewer errors + stronger model = best chance of finishing.
-   - If Pi succeeds → land. If not → proceed to **Step 9b (Deep Research & Rearchitect)**.
+   - Re-invoke via `claude -p --model claude-opus-4-6` with the reduced error set. Fewer errors + strongest model = best chance of finishing.
+   - **Run the Verify & Resume block from Step 8.**
+     - PASS → land.
+     - PARTIAL → resume Pi via `pi -c --session .hermes/sessions/{story_id}.jsonl`, then re-evaluate.
+     - NO_PROGRESS → proceed to **Step 9b (Deep Research & Rearchitect)**.
 
-**Why Opus on revisit:** The first pass already exhausted the normal escalation chain (different approach → Sonnet → research → decompose). If the story is being revisited, it was too hard for the default model. Opus is the next escalation — but NOT the last. If Opus fails, Deep Research takes over.
+**Why Opus on revisit:** The first pass already exhausted the normal escalation chain (different approach → Haiku → Sonnet → research). If the story is being revisited, it was too hard for lesser models. Opus via `claude -p` is the problem solver — runs on subscription, zero API cost. If Opus fails, Deep Research takes over.
 
-**Only one revisit pass per session.** Do not loop revisits — that risks burning budget on genuinely hard blockers. After one Deep Research attempt, exit.
+**Keep revisiting while making progress.** If Deep Research produces a new approach, try it. If that fails but reveals new information, research again. Only file a P0 blocker Beads issue when Deep Research has genuinely exhausted all alternatives AND two consecutive attempts produced zero new insight. Bob is NOT a developer — filing a blocker that requires human code debugging is a dead end. Solve it.
 
 ### 9b. Deep Research & Rearchitect
 
@@ -340,20 +382,23 @@ cd /tmp/hermes-prototype-{story_id}
 # Create minimal reproduction with the new approach
 # Run it — does it work?
 ```
-If the prototype passes → apply to the project via Pi on Opus with the proven approach.
+If the prototype passes → apply to the project via `claude -p --model claude-opus-4-6` with the proven approach.
 If the prototype fails → try the next alternative from Phase 4.
 
 **Phase 6 — Apply & Verify**
-Invoke Pi on Opus with the researched, prototyped, proven approach:
+Invoke Opus via subscription with the researched, prototyped, proven approach:
 ```
-pi -q "..." --yolo --agent tdd-coder --model anthropic/claude-opus-4-6
+claude -p "..." --model claude-opus-4-6
 ```
 Include: the working prototype code, the root cause analysis, the specific approach to use, and explicit instructions on what NOT to do (all previous failed approaches).
 
-- If Pi succeeds → land the story.
-- If Pi fails → update the Beads issue with ALL research findings, prototype results, and the closest-to-working approach. Tag as `needs-deep-research-round-2` for the next session to continue from where this left off (not from scratch).
+**Run the Verify & Resume block from Step 8** — `claude -p` does not finish the story on its own.
 
-**Key principle:** This step produces KNOWLEDGE even if it doesn't produce a fix. The next session's Deep Research starts with everything this session learned, not from zero.
+- PASS → return control to the work-loop and proceed to **Step 9 (Land the Plane)**, then LOOP back to Step 2. Vibe-loop's gate ("all stories closed → Phase 10b → 10c → 11") fires automatically once the story lands.
+- PARTIAL → resume Pi via `pi -c --session .hermes/sessions/{story_id}.jsonl --yolo --agent tdd-coder` with the reduced error set, then re-evaluate at Step 8.
+- NO_PROGRESS → loop back to Phase 1 (Root Cause Archaeology) with the new failure data. Keep looping while producing new insights. Only file a P0 blocker Beads issue when TWO consecutive Deep Research cycles produce zero new insight — tag as `needs-deep-research-round-2` with ALL accumulated research, prototype results, and failed approaches so the next session continues from findings, not from scratch.
+
+**Key principle:** This step produces KNOWLEDGE even if it doesn't produce a fix. Each cycle narrows the problem space. The next cycle (or next session) starts with everything accumulated, not from zero. Bob is NOT a developer — every cycle must resolve autonomously or build toward autonomous resolution.
 
 ### 10. End-of-Epic Review
 
@@ -418,9 +463,7 @@ This runs ONCE per epic, not per story. Deep adversarial review adds value after
 
 ### 11. Budget Guard
 
-Track cumulative cost across all stories in this work-loop invocation.
-If cumulative cost exceeds `WORK_LOOP_BUDGET_USD`, stop picking new stories.
-Per-story budget is enforced by the budget-enforcer Pi extension (not this skill).
+Budget caps are disabled. The work-loop runs until all ready stories are complete. Do NOT stop early due to cost — keep looping until `bd ready` returns zero.
 
 ## Error Handling
 

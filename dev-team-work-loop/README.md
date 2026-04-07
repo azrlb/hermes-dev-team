@@ -1,5 +1,6 @@
 # Hermes/Pi Dev Team — Portable Setup Guide
 
+
 ## What This Is
 
 A portable AI dev team that can be dropped into any project directory. Hermes orchestrates, Pi codes, Beads tracks work. You manage via Telegram or CLI.
@@ -249,18 +250,18 @@ Per story:
   7. EVALUATE  → Pi says PASS?
                   → CROSS-CHECK: Hermes re-runs {test_single_cmd} independently
                   → Cross-check PASS? Continue. FAIL? Send Pi back with correct runner.
-                  → Pi FAIL? Retry with escalation chain:
-                  different approach → Opus → web research → decompose
+                  → Pi FAIL? Retry with escalation chain (all via claude -p, subscription):
+                  different approach → retry Pi → web research → Opus (claude -p) → decompose
                   → Deep Research & Rearchitect (autonomous, no human dead end)
   8. LAND      → targeted regression (closed stories' test files only, NOT full suite)
                 → git commit → bd close → git push → report
   9. EPIC CHECK → all stories in epic closed? → targeted epic test suite
   9a. BLOCKER REVISIT → any blocked stories from this session?
                 → re-run tests (side-effect fixes may have resolved them)
-                → still failing? → Opus → Deep Research & Rearchitect
+                → still failing? → Opus (claude -p, subscription) → Deep Research & Rearchitect
   9b. DEEP RESEARCH → root cause archaeology, web search (GitHub issues, SO,
                 changelogs), challenge assumptions, alternative architecture,
-                prototype in isolation, apply via Opus
+                prototype in isolation, apply via Opus (claude -p)
   10. LOOP     → bd ready again → next story → repeat until done
 ```
 
@@ -272,7 +273,7 @@ Per story:
 - **Blocker revisit** — after all ready stories done, retries blocked stories. Side-effect fixes from other stories may have resolved blockers.
 - **No human dead ends** — Deep Research & Rearchitect is the final autonomous tier. Bob is not a developer — never escalate code issues to him.
 - **Quinn is a hard gate** — Quinn adversarial review (Phase 10c) runs ONCE after all stories complete, not per-story. It's mandatory — vibe-loop cannot declare completion without it. Three parallel layers: Blind Hunter, Edge Case Hunter, Acceptance Auditor. P0/P1 findings are auto-filed as beads and fixed before push.
-- **Progress-based retries** — no "3 strikes" limit. Keeps going while making progress. Escalates (model upgrade, web research, Deep Research) when stalled.
+- **Progress-based retries** — no "3 strikes" limit. Keeps going while making progress. Escalates (retry Pi → web research → Opus via `claude -p` subscription → Deep Research) when stalled.
 - **Claim identity** — Hermes runs as Bob's git identity. "Bob Banks" assignees are Hermes's own claims.
 
 ## Failure Handling
@@ -282,16 +283,18 @@ Progress-based detection (no arbitrary iteration limits):
 ```
 Pi stalled (same test count for 2 retries)
   ↓
-Escalation chain:
-  1. Try different approach
-  2. Escalate model: Sonnet → Opus
+Escalation chain (steps 2-6 use claude -p = subscription, zero API cost):
+  1. Try different approach (same Pi/OpenRouter model)
+  2. Try second different approach (still Pi/OpenRouter)
   3. Web search the error → feed results to Pi
-  4. Decompose: split by file, attack individually
-  5. Deep research: official docs, changelogs, known issues
-  6. Deep Research & Rearchitect: root cause archaeology, targeted web search
+  4. Web search the error → feed results to next attempt
+  5. claude -p --model claude-opus-4-6 (problem solver)
+  6. Decompose: split by file, attack individually
+  7. Deep research: official docs, changelogs, known issues
+  8. Deep Research & Rearchitect: root cause archaeology, targeted web search
      (GitHub issues, Stack Overflow, changelogs, migration guides), challenge
      every assumption, propose 2-3 alternative architectures, prototype in
-     isolation, apply proven fix via Opus
+     isolation, apply proven fix via Opus (claude -p, subscription)
   7. P0 blocker Beads issue with ALL accumulated research, prototype results,
      and failed approaches — tagged needs-deep-research-round-2 so next
      session continues from findings (not from scratch)
@@ -310,29 +313,25 @@ failure-classifier (after all strategies exhausted):
 
 ## Budget Controls
 
-| Tier | Scope | Default | What Happens on Exceed |
-|------|-------|---------|----------------------|
-| Per-story | Single Pi session | $2.00 | Pi session aborted, escalated |
-| Per-work-loop | All stories in one run | $10.00 | Stop picking new stories |
-| Daily | All activity | $5.00 | Telegram alert |
+**Budget caps are disabled.** The work-loop runs until all ready stories are complete — no per-story or per-session limits. Stories take what they take.
 
-Set via environment variables:
+To re-enable caps (not recommended), set environment variables:
 ```bash
-export STORY_BUDGET_USD=2.00
-export WORK_LOOP_BUDGET_USD=10.00
+export STORY_BUDGET_USD=2.00       # Per-story cap
+export WORK_LOOP_BUDGET_USD=10.00  # Per-session cap
 ```
 
 ## Graduated Autonomy
 
 | Phase | Behavior | When to Use |
 |-------|----------|-------------|
-| `manual` | Telegram approval before every commit | New project, building trust |
+| `manual` | Telegram approval before every commit | Only when explicitly requested |
 | `smart` | Auto-land familiar patterns, ask on novel | After 10+ successful stories |
-| `off` | Auto-land everything, notify only | Mature project, high confidence |
+| `off` | **DEFAULT.** Auto-land everything, notify only | All `--yolo` runs, all autonomous runs |
 
-Set: `export APPROVALS_MODE=manual`
+**`--yolo` means TRUE yolo.** When `--yolo` is passed, `APPROVALS_MODE` is **always `off`** — no pausing between stories, no Telegram approval gates, no "ready to proceed?" prompts. The pipeline runs end-to-end without human intervention. This is non-negotiable.
 
-**Recommended for autonomous runs:** Set `APPROVALS_MODE: "off"` in `~/.hermes/config.yaml` so `--yolo` sessions auto-land without waiting for Telegram approval. Override per-run with `APPROVALS_MODE=manual hermes chat ...` when you want gated commits.
+Override per-run with `APPROVALS_MODE=manual hermes chat ...` when you explicitly want gated commits.
 
 ## Required Config (in `~/.hermes/config.yaml`)
 
@@ -347,7 +346,7 @@ terminal:
 
 **Why `timeout: 1800`?** Pi sessions need 10-20 min per story. The default 180s killed every run. The work-loop's progress-based retry handles stalled sessions — the timeout is only a safety net for truly hung processes.
 
-**Why `APPROVALS_MODE: "off"`?** `--yolo` bypasses Hermes's tool approval prompts but NOT the work-loop's skill-level approval gate. Without this, Hermes waits for Telegram approval that never comes in CLI mode.
+**Why `APPROVALS_MODE: "off"`?** This is now the **default** in both config.yaml and the work-loop SKILL.md. When `--yolo` is passed, approvals are ALWAYS off — the flag means true yolo with zero human gates. The old default was `manual` which caused Q to pause between stories waiting for Telegram approval that never comes in CLI mode. Fixed 2026-04-05.
 
 ## Telegram Commands (when gateway running)
 
@@ -448,12 +447,12 @@ hermes chat -s dev-team/vibe-loop \
 
 # 3. Brownfield — add a feature to existing project
 cd /media/bob/I/AI_Projects/Crispi-app
-hermes chat -s dev-team/vibe-loop --yolo --model anthropic/claude-sonnet-4-6 \
+hermes chat -s dev-team/vibe-loop --yolo \
   -q "Add social sharing to Crispi"
 
 # 4. Brownfield — infra/migration work on existing project
 cd /media/bob/I/AI_Projects/Crispi-app
-hermes chat -s dev-team/vibe-loop --yolo --model anthropic/claude-sonnet-4-6 \
+hermes chat -s dev-team/vibe-loop --yolo \
   -q "Migrate Crispi from Lambda to Railway containers"
 ```
 
@@ -501,7 +500,7 @@ hermes chat -s dev-team/vibe-loop --yolo -q "Build feature X"
 # Work loop — execute existing stories only
 # IMPORTANT: Use --model to prevent smart routing from using a cheap model
 # that runs out of context mid-session
-hermes chat -s dev-team/work-loop --yolo --model anthropic/claude-sonnet-4-6
+hermes chat -s dev-team/work-loop --yolo
 ```
 
 ## Launching the Dev Team
@@ -522,27 +521,27 @@ The dev team is a set of skills loaded on top of Hermes via `-s`. Without a skil
 
 You load either `work-loop` or `vibe-loop` — the other 4 are internal support skills called by the main loops.
 
-**Health-fix** deserves special mention — it fixes lint/TS/build errors using progress-based monitoring (no arbitrary iteration limits), escalates from Sonnet → Opus → web research → decomposition, and **learns from every fix**. Solutions are saved as reusable skills so the same error is instantly resolved next time.
+**Health-fix** deserves special mention — it fixes lint/TS/build errors using progress-based monitoring (no arbitrary iteration limits), escalates from Pi (OpenRouter) → web research → Opus (`claude -p`, subscription) → decomposition, and **learns from every fix**. Solutions are saved as reusable skills so the same error is instantly resolved next time.
 
 ### Single Project
 
 ```bash
 # Interactive — you talk to it, approve commits
 cd /path/to/your/project
-hermes chat -s dev-team/work-loop --model anthropic/claude-sonnet-4-6
+hermes chat -s dev-team/work-loop --yolo
 
 # Fully autonomous — no approval prompts
-hermes chat -s dev-team/work-loop --yolo --model anthropic/claude-sonnet-4-6
+hermes chat -s dev-team/work-loop --yolo
 
 # Autonomous with a specific starting command
-hermes chat -s dev-team/work-loop --yolo --model anthropic/claude-sonnet-4-6 \
+hermes chat -s dev-team/work-loop --yolo \
   -q "Run bd ready --json. Execute ALL ready stories. Keep looping until bd ready returns zero."
 
 # Isolated in a git worktree (for parallel agents on same repo)
-hermes chat -s dev-team/work-loop --yolo --model anthropic/claude-sonnet-4-6 --worktree
+hermes chat -s dev-team/work-loop --yolo --worktree
 ```
 
-**IMPORTANT:** Always use `--model anthropic/claude-sonnet-4-6` for work-loop sessions. Without it, smart model routing may select a cheap model (Gemini Flash) that runs out of context mid-session and exits after 1-2 stories.
+**IMPORTANT:** Hermes uses the free default model (qwen/qwen3.6-plus) for orchestration. Do NOT pass `--model anthropic/claude-sonnet-4-6` — that burns API tokens through OpenRouter. Anthropic models are ONLY used via `claude -p --model claude-opus-4-6` in the escalation chain (runs on subscription).
 
 ### Multiple Projects in Parallel
 
@@ -551,7 +550,7 @@ Each project gets its own terminal and Hermes instance. No conflicts — separat
 ```bash
 # Terminal 1
 cd /media/bob/I/AI_Projects/Crispi-app
-hermes chat -s dev-team/work-loop --yolo --model anthropic/claude-sonnet-4-6
+hermes chat -s dev-team/work-loop --yolo
 
 # Terminal 2
 cd /media/bob/I/AI_Projects/FlowInCash
@@ -559,7 +558,7 @@ hermes chat -s dev-team/work-loop --yolo
 
 # Terminal 3
 cd /media/bob/I/AI_Projects/LivingApp-Platform
-hermes chat -s dev-team/work-loop --yolo --model anthropic/claude-sonnet-4-6
+hermes chat -s dev-team/work-loop --yolo
 ```
 
 **Constraints for parallel runs:**
@@ -598,6 +597,31 @@ cd .worktrees/lane-c && hermes chat -s dev-team/work-loop --yolo \
 ```
 
 Conflicts are typically small (route registrations, index files).
+
+## Regression Tests
+
+### Escalation chain (`tests/escalation/`)
+
+Validates that when Pi stalls and the work-loop escalates to `claude -p`, control returns to the loop instead of hanging — fixing the bug where Phase 10 / 10c / 11 would never complete after an Opus hand-off.
+
+The fixture shims `pi` (always fails) and `claude` (records the call and writes the correct fix), then runs `dev-team/work-loop` against a single tricky-parser story. The companion assert script verifies eight invariants:
+
+1. Pi was actually dispatched via Step 7
+2. Escalation reached `claude -p`
+3. **Test file was re-run after `claude -p`** (Verify & Resume block executed) — the critical fix
+4. Tests pass after the fix
+5. Story is `bd close`d
+6. `pi --session` file was created
+7. No story left `in_progress`
+8. Run log has content
+
+```bash
+cd ~/.hermes/dev-team-work-loop/tests/escalation
+./run-escalation-test.sh        # ~30 min — uses shimmed pi + claude (hermetic, free)
+./assert-escalation-test.sh     # exit code = number of failed assertions
+```
+
+Re-run after any edit to `~/.hermes/skills/dev-team/work-loop/SKILL.md`, `escalation-handler/SKILL.md`, or `vibe-loop/SKILL.md`.
 
 ## File Reference
 
