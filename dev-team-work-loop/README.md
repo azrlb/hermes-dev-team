@@ -1,6 +1,5 @@
 # Hermes/Pi Dev Team — Portable Setup Guide
 
-
 ## What This Is
 
 A portable AI dev team that can be dropped into any project directory. Hermes orchestrates, Pi codes, Beads tracks work. You manage via Telegram or CLI.
@@ -21,25 +20,25 @@ q chat -s dev-team/vibe-loop --yolo -q "Build X. Start at architecture."  # Phas
 q chat -s dev-team/vibe-loop --yolo -q "Run quinn-review."                # Phase 10c — adversarial review only
 ```
 
-| Phase | BMAD Name | Who | What |
-|-------|-----------|-----|------|
-| 0 | analyst | Analyst | Research & validate |
-| 1 | brief-capture | PM | Capture idea/task |
-| 2 | immersion | Enforcer | Deep project scan |
-| 3 | product-brief | PM | Product/feature brief |
-| 4 | prd | PM | PRD or feature spec |
-| 5 | architecture | Architect | Solution design |
-| 6 | epics | SM | Epic & story breakdown |
-| 7a | story-specs | SM | Story specs with AC |
-| 7b | tdd | QA | Failing TDD tests |
-| 8 | beads-filing | SM | File beads issues |
-| 9 | checkpoint | SM | Checkpoint & handoff |
-| 10 | dev | Dev (Pi) | Code to pass tests |
-| 10b | pattern-capture | Enforcer | Update project-context |
-| 10c | quinn-review | QA | Adversarial review (hard gate) |
-| 11 | e2e-validation | QA | End-to-end validation |
-| 12 | deploy | DevOps | Deploy to Railway |
-| 13 | report | Tech Writer | Completion report |
+| Phase | BMAD Name       | Who         | What                           |
+| ----- | --------------- | ----------- | ------------------------------ |
+| 0     | analyst         | Analyst     | Research & validate            |
+| 1     | brief-capture   | PM          | Capture idea/task              |
+| 2     | immersion       | Enforcer    | Deep project scan              |
+| 3     | product-brief   | PM          | Product/feature brief          |
+| 4     | prd             | PM          | PRD or feature spec            |
+| 5     | architecture    | Architect   | Solution design                |
+| 6     | epics           | SM          | Epic & story breakdown         |
+| 7a    | story-specs     | SM          | Story specs with AC            |
+| 7b    | tdd             | QA          | Failing TDD tests              |
+| 8     | beads-filing    | SM          | File beads issues              |
+| 9     | checkpoint      | SM          | Checkpoint & handoff           |
+| 10    | dev             | Dev (Pi)    | Code to pass tests             |
+| 10b   | pattern-capture | Enforcer    | Update project-context         |
+| 10c   | quinn-review    | QA          | Adversarial review (hard gate) |
+| 11    | e2e-validation  | QA          | End-to-end validation          |
+| 12    | deploy          | DevOps      | Deploy to Railway              |
+| 13    | report          | Tech Writer | Completion report              |
 
 ## Architecture
 
@@ -78,6 +77,7 @@ bd init --prefix YourProject
 ### 2. Create AGENTS.md
 
 This is the ONLY file Hermes/Pi need per-project. It tells Pi:
+
 - What the tech stack is
 - Where files live
 - What conventions to follow
@@ -169,6 +169,7 @@ bd update <id> --priority P0 --type feature --set-labels epic-1,lane-a
 Hermes/Pi use TDD — tests exist before implementation. The pre-flight check (work-loop Step 3) requires `test_file` to exist on disk.
 
 Write test files that:
+
 - Import services/components that DON'T EXIST YET
 - Define expected behavior via assertions
 - Use the project's existing test patterns (mocking, assertions, structure)
@@ -251,21 +252,22 @@ Per story:
                   → CROSS-CHECK: Hermes re-runs {test_single_cmd} independently
                   → Cross-check PASS? Continue. FAIL? Send Pi back with correct runner.
                   → Pi FAIL? Retry with escalation chain (all via claude -p, subscription):
-                  different approach → retry Pi → web research → Opus (claude -p) → decompose
+                  different approach → retry Pi → web research → minimax-m2.7  → decompose
                   → Deep Research & Rearchitect (autonomous, no human dead end)
   8. LAND      → targeted regression (closed stories' test files only, NOT full suite)
                 → git commit → bd close → git push → report
   9. EPIC CHECK → all stories in epic closed? → targeted epic test suite
   9a. BLOCKER REVISIT → any blocked stories from this session?
                 → re-run tests (side-effect fixes may have resolved them)
-                → still failing? → Opus (claude -p, subscription) → Deep Research & Rearchitect
+                → still failing? → minimax-m2.7 → Deep Research & Rearchitect
   9b. DEEP RESEARCH → root cause archaeology, web search (GitHub issues, SO,
                 changelogs), challenge assumptions, alternative architecture,
-                prototype in isolation, apply via Opus (claude -p)
+                prototype in isolation, apply via minimax-m2.7 
   10. LOOP     → bd ready again → next story → repeat until done
 ```
 
 **Key design decisions:**
+
 - **Stack-detect before everything** — auto-detects test runner from package.json/configs. Pi never guesses. CRA/CRACO projects get `CI=true` prefix to prevent watch mode hangs.
 - **Pi via CLI** — each story is a fresh `pi -q` process. If Pi crashes, Hermes is unaffected.
 - **Cross-check Pi's PASS** — Hermes independently re-runs tests after Pi claims success. Catches wrong-runner results.
@@ -288,13 +290,13 @@ Escalation chain (steps 2-6 use claude -p = subscription, zero API cost):
   2. Try second different approach (still Pi/OpenRouter)
   3. Web search the error → feed results to Pi
   4. Web search the error → feed results to next attempt
-  5. claude -p --model claude-opus-4-6 (problem solver)
+  5. Ollama cloud minimax-m2.7  (problem solver)
   6. Decompose: split by file, attack individually
   7. Deep research: official docs, changelogs, known issues
   8. Deep Research & Rearchitect: root cause archaeology, targeted web search
      (GitHub issues, Stack Overflow, changelogs, migration guides), challenge
      every assumption, propose 2-3 alternative architectures, prototype in
-     isolation, apply proven fix via Opus (claude -p, subscription)
+     isolation, apply proven fix via Ollama cloud minimax-m2.7
   7. P0 blocker Beads issue with ALL accumulated research, prototype results,
      and failed approaches — tagged needs-deep-research-round-2 so next
      session continues from findings (not from scratch)
@@ -316,6 +318,7 @@ failure-classifier (after all strategies exhausted):
 **Budget caps are disabled.** The work-loop runs until all ready stories are complete — no per-story or per-session limits. Stories take what they take.
 
 To re-enable caps (not recommended), set environment variables:
+
 ```bash
 export STORY_BUDGET_USD=2.00       # Per-story cap
 export WORK_LOOP_BUDGET_USD=10.00  # Per-session cap
@@ -323,11 +326,11 @@ export WORK_LOOP_BUDGET_USD=10.00  # Per-session cap
 
 ## Graduated Autonomy
 
-| Phase | Behavior | When to Use |
-|-------|----------|-------------|
-| `manual` | Telegram approval before every commit | Only when explicitly requested |
-| `smart` | Auto-land familiar patterns, ask on novel | After 10+ successful stories |
-| `off` | **DEFAULT.** Auto-land everything, notify only | All `--yolo` runs, all autonomous runs |
+| Phase    | Behavior                                       | When to Use                            |
+| -------- | ---------------------------------------------- | -------------------------------------- |
+| `manual` | Telegram approval before every commit          | Only when explicitly requested         |
+| `smart`  | Auto-land familiar patterns, ask on novel      | After 10+ successful stories           |
+| `off`    | **DEFAULT.** Auto-land everything, notify only | All `--yolo` runs, all autonomous runs |
 
 **`--yolo` means TRUE yolo.** When `--yolo` is passed, `APPROVALS_MODE` is **always `off`** — no pausing between stories, no Telegram approval gates, no "ready to proceed?" prompts. The pipeline runs end-to-end without human intervention. This is non-negotiable.
 
@@ -350,52 +353,61 @@ terminal:
 
 ## Telegram Commands (when gateway running)
 
-| Message | Action |
-|---------|--------|
-| `<beads-id>` | Execute that specific story |
-| `<id1> <id2>` | Parallel execution of both |
-| `run ready` | Execute all ready stories |
-| `status` | Report all in-progress stories |
-| `stop <id>` | Abort and checkpoint |
+| Message       | Action                         |
+| ------------- | ------------------------------ |
+| `<beads-id>`  | Execute that specific story    |
+| `<id1> <id2>` | Parallel execution of both     |
+| `run ready`   | Execute all ready stories      |
+| `status`      | Report all in-progress stories |
+| `stop <id>`   | Abort and checkpoint           |
 
 ## Troubleshooting
 
 ### Pi can't find project files
+
 Make sure you launched Hermes from the project directory: `cd /path/to/project && hermes chat ...`
 
 ### Tests fail with "Failed to resolve import"
+
 This is CORRECT for TDD — the service doesn't exist yet. Pi needs to create it.
 
 ### Hermes doesn't pick up stories
+
 Run `bd ready` manually. If no issues appear, check:
+
 - Are issues status=open? (`bd list --status=open`)
 - Do dependencies block them? (`bd show <id>`)
 - Is the label filter matching? (`bd ready -l your-label`)
 
 ### Pi writes code but tests still fail
+
 The test defines the contract. Pi should NOT modify tests. If the test is wrong, file a Beads issue — don't have Pi edit the test file.
 
 ### Hermes stops after one story
+
 The work-loop should keep looping. If it exits after one story, restart with explicit loop instruction: `"Execute ALL ready stories. Keep looping until bd ready returns zero."`
 
 ### Full test suite shows failures from other stories
+
 This is expected. Tests for stories that haven't been implemented yet WILL fail. Hermes only treats failures in CLOSED stories' tests as regressions. Open story failures are ignored.
 
 ### Pi crashes during a story
+
 Pi runs as a CLI child process. If it crashes, Hermes is unaffected — it can retry or escalate. No MCP worker thread issues.
 
 ## Two Modes: Work Loop vs Vibe Loop
 
 The dev team has two entry points:
 
-| Mode | Skill | What It Does | When to Use |
-|------|-------|--------------|-------------|
-| **Vibe Loop** | `dev-team/vibe-loop` | THE loop — handles greenfield AND brownfield | **Default for everything.** Single entry point. |
-| **Work Loop** | `dev-team/work-loop` | ⚠ DEPRECATED — internal engine only | Called by vibe-loop as Phase 10. Do NOT invoke directly — it skips Quinn review and phases 10b-13. |
+| Mode          | Skill                | What It Does                                 | When to Use                                                                                        |
+| ------------- | -------------------- | -------------------------------------------- | -------------------------------------------------------------------------------------------------- |
+| **Vibe Loop** | `dev-team/vibe-loop` | THE loop — handles greenfield AND brownfield | **Default for everything.** Single entry point.                                                    |
+| **Work Loop** | `dev-team/work-loop` | ⚠ DEPRECATED — internal engine only          | Called by vibe-loop as Phase 10. Do NOT invoke directly — it skips Quinn review and phases 10b-13. |
 
 Vibe-loop is the successor to work-loop. It wraps work-loop as its Phase 10 execution engine while adding discovery, project immersion, and validation phases around it.
 
 **Vibe Loop pipeline (16 phases — each has a number AND a BMAD agent name):**
+
 ```
 Number    BMAD Name         GREENFIELD                   BROWNFIELD
 Phase 0   analyst           Research/validate            AUTO-SKIPPED
@@ -423,6 +435,7 @@ Phase 13  report            Completion report            (same)
 ```
 
 **Use BMAD names in prompts — both forms work:**
+
 ```bash
 hermes chat -s dev-team/vibe-loop --yolo -q "Add X to Crispi. Start at dev."
 hermes chat -s dev-team/vibe-loop --yolo -q "Build X. Start at tdd."
@@ -446,12 +459,12 @@ hermes chat -s dev-team/vibe-loop \
   -q "Find me an app idea in the fitness space"
 
 # 3. Brownfield — add a feature to existing project
-cd /media/bob/I/AI_Projects/Crispi-app
+cd /media/bob/C1/AI_Projects/Crispi-app
 hermes chat -s dev-team/vibe-loop --yolo \
   -q "Add social sharing to Crispi"
 
 # 4. Brownfield — infra/migration work on existing project
-cd /media/bob/I/AI_Projects/Crispi-app
+cd /media/bob/C1/AI_Projects/Crispi-app
 hermes chat -s dev-team/vibe-loop --yolo \
   -q "Migrate Crispi from Lambda to Railway containers"
 ```
@@ -484,17 +497,17 @@ hermes chat -s dev-team/vibe-loop --yolo -q "Build feature X"
 
 **Expected artifact paths and their phases:**
 
-| Phase | BMAD Name | Expected path | What it is |
-|-------|-----------|--------------|------------|
-| 0 | analyst | `_output/analyst-report.md` | Market research |
-| 1 | brief-capture | `_output/idea-statement.md` | Idea capture |
-| 3 | product-brief | `_output/product-brief.md` or `_output/feature-brief.md` | Brief |
-| 4 | prd | `_output/prd.md` or `_output/feature-spec.md` | PRD / spec |
-| 5 | architecture | `_output/architecture.md` | Architecture design |
-| 6 | epics | `_output/epics.md` | Epic breakdown |
-| 7a | story-specs | `docs/stories/*.md` | Story specs (AC, tasks, dev notes) |
-| 7b | tdd | `src/**/__tests__/*.test.ts` (or language equivalent) | TDD test files |
-| 8 | beads-filing | Beads issues with matching labels | Filed work items |
+| Phase | BMAD Name     | Expected path                                            | What it is                         |
+| ----- | ------------- | -------------------------------------------------------- | ---------------------------------- |
+| 0     | analyst       | `_output/analyst-report.md`                              | Market research                    |
+| 1     | brief-capture | `_output/idea-statement.md`                              | Idea capture                       |
+| 3     | product-brief | `_output/product-brief.md` or `_output/feature-brief.md` | Brief                              |
+| 4     | prd           | `_output/prd.md` or `_output/feature-spec.md`            | PRD / spec                         |
+| 5     | architecture  | `_output/architecture.md`                                | Architecture design                |
+| 6     | epics         | `_output/epics.md`                                       | Epic breakdown                     |
+| 7a    | story-specs   | `docs/stories/*.md`                                      | Story specs (AC, tasks, dev notes) |
+| 7b    | tdd           | `src/**/__tests__/*.test.ts` (or language equivalent)    | TDD test files                     |
+| 8     | beads-filing  | Beads issues with matching labels                        | Filed work items                   |
 
 ```bash
 # Work loop — execute existing stories only
@@ -528,20 +541,20 @@ You load either `work-loop` or `vibe-loop` — the other 4 are internal support 
 ```bash
 # Interactive — you talk to it, approve commits
 cd /path/to/your/project
-hermes chat -s dev-team/work-loop --yolo
+hermes chat -s dev-team/vibe-loop --yolo
 
 # Fully autonomous — no approval prompts
-hermes chat -s dev-team/work-loop --yolo
+hermes chat -s dev-team/vibe-loop --yolo
 
 # Autonomous with a specific starting command
-hermes chat -s dev-team/work-loop --yolo \
+hermes chat -s dev-team/vibe-loop --yolo \
   -q "Run bd ready --json. Execute ALL ready stories. Keep looping until bd ready returns zero."
 
 # Isolated in a git worktree (for parallel agents on same repo)
-hermes chat -s dev-team/work-loop --yolo --worktree
+hermes chat -s dev-team/vibe-loop --yolo --worktree
 ```
 
-**IMPORTANT:** Hermes uses the free default model (qwen/qwen3.6-plus) for orchestration. Do NOT pass `--model anthropic/claude-sonnet-4-6` — that burns API tokens through OpenRouter. Anthropic models are ONLY used via `claude -p --model claude-opus-4-6` in the escalation chain (runs on subscription).
+**IMPORTANT:** Hermes uses the free default model (qwen/qwen3-coder-next) for orchestration. Do NOT pass `--model anthropic/claude-sonnet-4-6` — that burns API tokens through OpenRouter. Anthropic models are ONLY used via `claude -p --model claude-opus-4-6` in the escalation chain (runs on subscription).
 
 ### Multiple Projects in Parallel
 
@@ -549,19 +562,20 @@ Each project gets its own terminal and Hermes instance. No conflicts — separat
 
 ```bash
 # Terminal 1
-cd /media/bob/I/AI_Projects/Crispi-app
-hermes chat -s dev-team/work-loop --yolo
+cd /media/bob/C1/AI_Projects/Crispi-app
+hermes chat -s dev-team/vibe-loop --yolo
 
 # Terminal 2
-cd /media/bob/I/AI_Projects/FlowInCash
-hermes chat -s dev-team/work-loop --yolo
+cd /media/bob/C1/AI_Projects/FlowInCash
+hermes chat -s dev-team/vibe-loop --yolo
 
 # Terminal 3
-cd /media/bob/I/AI_Projects/LivingApp-Platform
-hermes chat -s dev-team/work-loop --yolo
+cd /media/bob/C1/AI_Projects/LivingApp-Platform
+hermes chat -s dev-team/vibe-loop --yolo
 ```
 
 **Constraints for parallel runs:**
+
 - **API rate limits** — multiple Pi sessions hit your provider concurrently
 - **Cost** — each instance burns its own budget independently (3 teams = 3x spend)
 - **Machine resources** — CPU/memory for concurrent sessions + test runners
@@ -589,10 +603,10 @@ Each `--worktree` instance gets its own branch and working directory. Merge bran
 git worktree add .worktrees/lane-b -b lane-b
 git worktree add .worktrees/lane-c -b lane-c
 
-cd .worktrees/lane-b && hermes chat -s dev-team/work-loop --yolo \
+cd .worktrees/lane-b && hermes chat -s dev-team/vibe-loop --yolo \
   -q "Read AGENTS.md. Run bd ready -l lane-b --json. Execute ready stories."
 
-cd .worktrees/lane-c && hermes chat -s dev-team/work-loop --yolo \
+cd .worktrees/lane-c && hermes chat -s dev-team/vibe-loop --yolo \
   -q "Read AGENTS.md. Run bd ready -l lane-c --json. Execute ready stories."
 ```
 
@@ -625,20 +639,20 @@ Re-run after any edit to `~/.hermes/skills/dev-team/work-loop/SKILL.md`, `escala
 
 ## File Reference
 
-| File | Location | Purpose |
-|------|----------|---------|
-| Hermes config | `~/.hermes/config.yaml` | Global MCP, model, memory config |
-| Pi CLI | `pi` (global install) | Coding agent — invoked as child process, not MCP |
-| tdd-coder | `~/.pi/agents/tdd-coder.md` | Pi agent: implements code to make tests pass |
-| failure-classifier | `~/.pi/agents/failure-classifier.md` | Pi agent: diagnoses failures |
-| Quinn review | `bmad-code-review` skill | MANDATORY after every vibe-loop implementation (quinn-review / Phase 10c hard gate) |
-| work-loop | `~/.hermes/skills/dev-team/work-loop/SKILL.md` | Hermes skill: story execution |
-| vibe-loop | `~/.hermes/skills/dev-team/vibe-loop/SKILL.md` | Hermes skill: idea-to-code pipeline |
-| stack-detect | `~/.hermes/skills/dev-team/stack-detect/SKILL.md` | Hermes skill: auto-detect project stack, write to AGENTS.md |
-| health-fix | `~/.hermes/skills/dev-team/health-fix/SKILL.md` | Hermes skill: error resolution + learning |
-| escalation-handler | `~/.hermes/skills/dev-team/escalation-handler/SKILL.md` | Hermes skill: failure routing (no human dead ends) |
-| telegram-dispatch | `~/.hermes/skills/dev-team/telegram-dispatch/SKILL.md` | Hermes skill: Telegram commands |
-| model-tier-classifier | `~/.hermes/skills/dev-team/model-tier-classifier/SKILL.md` | Hermes skill: model selection |
-| AGENTS.md | `<project>/AGENTS.md` | Per-project context for Pi (stack block auto-generated by stack-detect) |
-| Story files | `<project>/docs/stories/*.md` | Story specs |
-| Beads DB | `<project>/.beads/*.db` | Issue tracking |
+| File                  | Location                                                   | Purpose                                                                             |
+| --------------------- | ---------------------------------------------------------- | ----------------------------------------------------------------------------------- |
+| Hermes config         | `~/.hermes/config.yaml`                                    | Global MCP, model, memory config                                                    |
+| Pi CLI                | `pi` (global install)                                      | Coding agent — invoked as child process, not MCP                                    |
+| tdd-coder             | `~/.pi/agents/tdd-coder.md`                                | Pi agent: implements code to make tests pass                                        |
+| failure-classifier    | `~/.pi/agents/failure-classifier.md`                       | Pi agent: diagnoses failures                                                        |
+| Quinn review          | `bmad-code-review` skill                                   | MANDATORY after every vibe-loop implementation (quinn-review / Phase 10c hard gate) |
+| work-loop             | `~/.hermes/skills/dev-team/work-loop/SKILL.md`             | Hermes skill: story execution                                                       |
+| vibe-loop             | `~/.hermes/skills/dev-team/vibe-loop/SKILL.md`             | Hermes skill: idea-to-code pipeline                                                 |
+| stack-detect          | `~/.hermes/skills/dev-team/stack-detect/SKILL.md`          | Hermes skill: auto-detect project stack, write to AGENTS.md                         |
+| health-fix            | `~/.hermes/skills/dev-team/health-fix/SKILL.md`            | Hermes skill: error resolution + learning                                           |
+| escalation-handler    | `~/.hermes/skills/dev-team/escalation-handler/SKILL.md`    | Hermes skill: failure routing (no human dead ends)                                  |
+| telegram-dispatch     | `~/.hermes/skills/dev-team/telegram-dispatch/SKILL.md`     | Hermes skill: Telegram commands                                                     |
+| model-tier-classifier | `~/.hermes/skills/dev-team/model-tier-classifier/SKILL.md` | Hermes skill: model selection                                                       |
+| AGENTS.md             | `<project>/AGENTS.md`                                      | Per-project context for Pi (stack block auto-generated by stack-detect)             |
+| Story files           | `<project>/docs/stories/*.md`                              | Story specs                                                                         |
+| Beads DB              | `<project>/.beads/*.db`                                    | Issue tracking                                                                      |

@@ -53,27 +53,30 @@ code_execution:
 compression:
   enabled: true
   protect_last_n: 20
-  summary_model: google/gemini-3-flash-preview
+  summary_model: qwen3.5:cloud          # Ollama cloud, temporary
   target_ratio: 0.2
   threshold: 0.5
 delegation:
-  model: anthropic/claude-sonnet-4-6    # Default subagent model
-  provider: anthropic                    # Use Anthropic directly (not OpenRouter) for reliability
+  model: qwen3-coder-next:cloud         # Default subagent model (Ollama cloud, temporary)
+  provider: custom
+  base_url: http://localhost:11434/v1    # Ollama
   default_toolsets:
   - terminal
   - file
   - web
   max_iterations: 50
 fallback_model:
-  provider: anthropic
-  model: anthropic/claude-opus-4-6      # Fallback when primary fails
+  provider: custom
+  base_url: http://localhost:11434/v1    # Ollama
+  model: minimax-m2.7:cloud             # Fallback when primary fails (Ollama cloud, temporary)
 smart_model_routing:
   enabled: true
   max_simple_chars: 160
   max_simple_words: 28
   cheap_model:
-    provider: openrouter
-    model: google/gemini-2.5-flash      # Simple tasks use cheap model
+    provider: custom
+    base_url: http://localhost:11434/v1  # Ollama
+    model: qwen3.5:cloud                # Simple tasks use cheap model (Ollama cloud, temporary)
 display:
   background_process_notifications: all
   bell_on_complete: false
@@ -104,8 +107,9 @@ memory:
   user_char_limit: 1375
   user_profile_enabled: true
 model:
-  default: claude-sonnet-4-6
-  provider: anthropic
+  default: qwen3-coder-next:cloud       # Ollama cloud, temporary
+  provider: custom
+  base_url: http://localhost:11434/v1    # Ollama
 platform_toolsets:
   cli:
   - hermes-cli
@@ -129,8 +133,9 @@ skills:
   creation_nudge_interval: 15
 smart_model_routing:
   cheap_model:
-    model: google/gemini-2.5-flash
-    provider: openrouter
+    model: qwen3.5:cloud
+    provider: custom
+    base_url: http://localhost:11434/v1  # Ollama
   enabled: true
   max_simple_chars: 160
   max_simple_words: 28
