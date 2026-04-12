@@ -1012,6 +1012,11 @@ After work-loop execution completes, scan what was created during this session:
 
 ### Phase 10c / quinn-review — Quinn Adversarial Review (MANDATORY — HARD GATE)
 
+**Pre-review context management:** By this point in the pipeline, context is typically 80-90% consumed. The review needs room to read full source files. To maximize available context:
+1. **Write a checkpoint file** to disk (`_output/phase10c-checkpoint.md`) summarizing: stories completed, files changed, test results, any known issues. This is your recovery point if context compresses mid-review.
+2. **Do NOT carry forward large file contents from prior phases.** If you already read source files during Phase 10, you must re-read them fresh during the review — do not rely on earlier context that may be compressed away.
+3. **Prefer delegating review layers** to subagents or Pi (which get fresh context windows independent of the orchestrator's consumed context) over running them inline. Delegated reviewers are NOT affected by the orchestrator's context pressure. If delegation fails, run inline but read only the files needed for each finding, not the entire codebase at once.
+
 **This is NOT optional. This is a HARD GATE — the pipeline cannot complete without it.** If you are in `-q` mode and about to return your response: you are not done until this phase runs. Pi's code passes tests, but tests only validate what was anticipated. Quinn catches what wasn't — omissions, dead code, composition errors, security issues, spec deviations. Tests and adversarial review are complementary; neither replaces the other.
 
 **Trigger:** All stories in Phase 10 are closed (or only escalated stories remain). Runs ONCE after the full implementation, not per-story.
@@ -1020,12 +1025,12 @@ After work-loop execution completes, scan what was created during this session:
 
 **Process:**
 
-**Step 1 — Collect the diff:**
+**Step 1 — Collect the diff AND full source files:**
 ```bash
 git diff main...HEAD --stat
 git diff main...HEAD
 ```
-This captures everything the vibe-loop session produced.
+This captures everything the vibe-loop session produced. **Additionally, identify all source files touched in the diff (`git diff main...HEAD --name-only`) and read each file in full.** The diff shows what changed, but composition errors (e.g., how changed code interacts with unchanged code in the same file) require full-file context. Reviewers MUST receive both the diff and the full file contents.
 
 **Step 2 — Collect spec context:**
 Gather all story files from `docs/stories/` that were part of this session (match by beads labels or epic tag). These provide the acceptance criteria Quinn reviews against.
@@ -1034,9 +1039,20 @@ Gather all story files from `docs/stories/` that were part of this session (matc
 
 Hermes invokes the code review skill (or runs the review layers directly if the skill is unavailable):
 
-- **Blind Hunter** — receives diff ONLY. No project context, no spec. Finds bugs, security issues, logic errors purely from the code. Invoke via `bmad-review-adversarial-general`.
-- **Edge Case Hunter** — receives diff + project read access. Walks every branching path and boundary condition. Reports unhandled edge cases only. Invoke via `bmad-review-edge-case-hunter`.
-- **Acceptance Auditor** — receives diff + story spec files. Checks: AC violations, spec deviations, missing implementation, contradictions. Reviews against every AC in every story file.
+- **Blind Hunter** — receives diff + full source files ONLY. No project context, no spec. Finds bugs, security issues, logic errors purely from the code. Invoke via `bmad-review-adversarial-general`.
+- **Edge Case Hunter** — receives diff + full source files + project read access. Walks every branching path and boundary condition. Reports unhandled edge cases only. Invoke via `bmad-review-edge-case-hunter`.
+- **Acceptance Auditor** — receives diff + full source files + story spec files. Checks: AC violations, spec deviations, missing implementation, contradictions. Reviews against every AC in every story file.
+
+**Subagent failure handling — escalation chain (MANDATORY):**
+
+If ANY review subagent fails (tool errors, timeout, empty results), escalate — DO NOT continue with partial or missing results:
+
+1. **Retry with parent model** — re-invoke the failed layer using the same model as the orchestrator (not the delegation model). The delegation model may lack tool-calling capability.
+2. **Retry with `claude -p --model claude-opus-4-6`** — if the parent model also fails, escalate to Claude via subscription (zero API cost).
+3. **Run inline** — if delegation is completely broken, the orchestrator MUST perform the review itself rather than delegating. Read all files, apply the review criteria, produce findings directly.
+4. **HALT** — if none of the above produces real findings, HALT THE PIPELINE. Do NOT continue to Phase 11.
+
+**ABSOLUTELY FORBIDDEN: Simulating, fabricating, or generating placeholder findings.** Writing JavaScript scripts that produce "simulated" reviews, generating findings without reading the actual code, or any form of fake review output is a PIPELINE VIOLATION. This is a HARD GATE — the purpose is to catch real bugs. Fabricated findings are worse than no findings because they create false confidence. If you cannot review the code, say so and HALT. Never pretend the review happened.
 
 **Step 4 — Triage findings:**
 
