@@ -554,7 +554,7 @@ hermes chat -s dev-team/vibe-loop --yolo \
 hermes chat -s dev-team/vibe-loop --yolo --worktree
 ```
 
-**IMPORTANT:** Hermes uses the free default model (qwen/qwen3-coder-next) for orchestration. Do NOT pass `--model anthropic/claude-sonnet-4-6` — that burns API tokens through OpenRouter. Anthropic models are ONLY used via `claude -p --model claude-opus-4-6` in the escalation chain (runs on subscription).
+**IMPORTANT:** Hermes uses Ollama Cloud models for all work. Default: `qwen3.5:cloud` for orchestration and coding. Escalation: `glm-5.1:cloud` for complex/adversarial tasks (cross-file reasoning, security review). _(Legacy: Anthropic models via `claude -p --model claude-opus-4-6` on subscription remain a valid fallback if Ollama Cloud is unavailable.)_
 
 ### Multiple Projects in Parallel
 

@@ -10,12 +10,12 @@ Analyzes task descriptions and story metadata to classify complexity and recomme
 
 ## The 5-Tier Model
 
-| Tier | Model | Cost/MTok (in/out) | Use When |
-|------|-------|-------------------|----------|
-| 1 | google/gemini-2.5-flash | $0.15/$0.60 | Simple: utility functions, config changes, single-file edits |
-| 2 | google/gemini-2.5-flash | $0.15/$0.60 | Standard-simple: CRUD endpoints, straightforward services |
-| 3 | anthropic/claude-sonnet-4-6 | $3.00/$15.00 | Standard: multi-file features, business logic, API integration |
-| 4 | anthropic/claude-opus-4-6 | $15.00/$75.00 | Complex: architectural changes, concurrency, multi-service |
+| Tier | Model (Current: Ollama Cloud) | Legacy (Anthropic/Google) | Use When |
+|------|-------------------------------|--------------------------|----------|
+| 1 | qwen3.5:cloud | google/gemini-2.5-flash | Simple: utility functions, config changes, single-file edits |
+| 2 | qwen3.5:cloud | google/gemini-2.5-flash | Standard-simple: CRUD endpoints, straightforward services |
+| 3 | qwen3.5:cloud | anthropic/claude-sonnet-4-6 | Standard: multi-file features, business logic, API integration |
+| 4 | glm-5.1:cloud | anthropic/claude-opus-4-6 | Complex: architectural changes, concurrency, multi-service, adversarial review |
 | 5 | Human (Bob) | N/A | Beyond AI: requires business decisions, creative direction, external negotiations |
 
 ## Classification Rules
@@ -79,7 +79,7 @@ Score each indicator. Default to Tier 3 if ambiguous.
 ```json
 {
   "tier": 3,
-  "model": "anthropic/claude-sonnet-4-6",
+  "model": "qwen3.5:cloud",
   "confidence": 0.85,
   "reasoning": "Multi-file feature with validation logic, standard complexity",
   "cost_estimate_usd": 0.50

@@ -1048,7 +1048,7 @@ Hermes invokes the code review skill (or runs the review layers directly if the 
 If ANY review subagent fails (tool errors, timeout, empty results), escalate — DO NOT continue with partial or missing results:
 
 1. **Retry with parent model** — re-invoke the failed layer using the same model as the orchestrator (not the delegation model). The delegation model may lack tool-calling capability.
-2. **Retry with `claude -p --model claude-opus-4-6`** — if the parent model also fails, escalate to Claude via subscription (zero API cost).
+2. **Retry with GLM-5.1 (`glm-5.1:cloud` via Ollama)** — if the parent model also fails, escalate to GLM-5.1 which is optimized for cross-file security reasoning and SWE-bench Pro tasks. _(Previously: `claude -p --model claude-opus-4-6` via Anthropic subscription. Anthropic models remain a valid fallback if Ollama cloud is unavailable.)_
 3. **Run inline** — if delegation is completely broken, the orchestrator MUST perform the review itself rather than delegating. Read all files, apply the review criteria, produce findings directly.
 4. **HALT** — if none of the above produces real findings, HALT THE PIPELINE. Do NOT continue to Phase 11.
 

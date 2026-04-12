@@ -150,15 +150,16 @@ PROMPT
 )" --session .hermes/sessions/{story_id}.jsonl --yolo --agent tdd-coder 2>&1
 ```
 
-**Escalation uses Claude Code (`claude -p`) — rides on subscription, not API tokens:**
+**Escalation model stack (current: Ollama Cloud):**
 
-**Escalation uses Claude Code Opus only (`claude -p`) — rides on subscription, not API tokens:**
-
+Primary escalation uses GLM-5.1 via Ollama Cloud — optimized for cross-file reasoning and SWE-bench Pro tasks:
 ```
-claude -p "..." --model claude-opus-4-6
+hermes chat -m glm-5.1:cloud -q "..."
 ```
 
-Use ONLY for: stalled stories, blocker revisits, Deep Research apply. Normal retries stay on Pi (OpenRouter). Only Opus justifies the subscription call.
+_(Legacy/fallback: `claude -p --model claude-opus-4-6` via Anthropic subscription. Still valid if Ollama Cloud is unavailable.)_
+
+Use ONLY for: stalled stories, blocker revisits, Deep Research apply. Normal retries stay on Pi (OpenRouter).
 
 **After coding agent returns PASS:** The agent already validated the story's own tests. No separate Quinn run per story.
 
@@ -198,19 +199,19 @@ cd {project_root} && {test_single_cmd} {test_file} 2>&1
 
 **Pi STALLED (same test count for 2 retries):**
 
-> **INVARIANT — read this before invoking `claude -p`:** `claude -p` is a *problem solver*, not a *story finisher*. It does NOT call `bd close`, it does NOT run Quinn, it does NOT advance the loop. Every `claude -p` invocation in this skill MUST be followed by the **Verify & Resume** block below. "claude -p was invoked" is NEVER a terminal state.
+> **INVARIANT — read this before invoking the escalation model:** The escalation model (GLM-5.1 or `claude -p`) is a *problem solver*, not a *story finisher*. It does NOT call `bd close`, it does NOT run Quinn, it does NOT advance the loop. Every escalation invocation in this skill MUST be followed by the **Verify & Resume** block below. "Escalation model was invoked" is NEVER a terminal state.
 
 1. Try different approach (same Pi/OpenRouter model)
 2. Try a second different approach (still Pi/OpenRouter)
 3. **Research:** Web search the exact error or failing test. Feed findings to Pi.
 4. Re-invoke Pi with research context
-5. Escalate to `claude -p --model claude-opus-4-6` (problem solver, subscription) — then run **Verify & Resume** (below).
+5. Escalate to `glm-5.1:cloud` via Ollama _(fallback: `claude -p --model claude-opus-4-6`)_ — then run **Verify & Resume** (below).
 6. If Verify & Resume returns NO_PROGRESS: failure-classifier → escalation-handler (research findings included)
 
-#### Verify & Resume (mandatory after every `claude -p` invocation)
+#### Verify & Resume (mandatory after every escalation model invocation)
 
 ```bash
-# 1. Re-run the story's own test file independently — do NOT trust claude -p's self-report.
+# 1. Re-run the story's own test file independently — do NOT trust the escalation model's self-report.
 cd {project_root} && {test_single_cmd} {test_file} 2>&1 | tee /tmp/hermes-{story_id}-postopus.log
 TEST_EXIT=$?
 ```
@@ -221,7 +222,7 @@ Branch on the result:
 - **PARTIAL PROGRESS** (fewer failing tests than the pre-Opus baseline) → resume Pi with the reduced error set, preserving prior context via the stable session file:
   ```bash
   cd {project_root} && pi -c --session .hermes/sessions/{story_id}.jsonl --yolo --agent tdd-coder \
-    -q "claude -p attempted a fix and made partial progress. Remaining failures: <paste tail of postopus.log>. Continue from here. Do NOT modify test files."
+    -q "Escalation model attempted a fix and made partial progress. Remaining failures: <paste tail of postopus.log>. Continue from here. Do NOT modify test files."
   ```
   Then return to the top of Step 8 (Evaluate Result) with Pi's new output.
 - **NO PROGRESS / SAME ERRORS** → fall through to step 6 above (failure-classifier → escalation-handler). In Step 9a, fall through to Step 9b. In Step 9b Phase 6, loop back to Phase 1 (Root Cause Archaeology) with the new failure data.
@@ -306,23 +307,24 @@ If the closed story test file list is very long (20+), split into batches of 10 
 4. If tests NOW PASS (blocker was resolved by side-effect of another story's work):
    - Cross-check passes → proceed to Land the Plane (Step 9) for this story
 5. If tests still FAIL with the SAME errors as before:
-   - **Escalate to Opus via subscription.** The first attempt used the default tier — if it couldn't solve it, throw the best model at it with full context:
+   - **Escalate to GLM-5.1 (or `claude -p` fallback).** The first attempt used the default tier — if it couldn't solve it, throw the best model at it with full context:
      ```
-     claude -p "..." --model claude-opus-4-6
+     hermes chat -m glm-5.1:cloud -q "..."
+     # Fallback: claude -p "..." --model claude-opus-4-6
      ```
-   - Include in the prompt: the original error, all failed approaches from the Beads issue notes, and any research findings from the first attempt. Opus gets the full picture.
+   - Include in the prompt: the original error, all failed approaches from the Beads issue notes, and any research findings from the first attempt. The escalation model gets the full picture.
    - **Run the Verify & Resume block from Step 8** (re-run `{test_single_cmd} {test_file}`, branch on PASS / PARTIAL / NO_PROGRESS).
      - PASS → land.
      - PARTIAL → resume Pi via `pi -c --session .hermes/sessions/{story_id}.jsonl` with the reduced error set, then re-evaluate.
      - NO_PROGRESS → proceed to **Step 9b (Deep Research & Rearchitect)**.
 6. If tests FAIL with FEWER errors (partial progress from side-effects):
-   - Re-invoke via `claude -p --model claude-opus-4-6` with the reduced error set. Fewer errors + strongest model = best chance of finishing.
+   - Re-invoke via `glm-5.1:cloud` _(fallback: `claude -p --model claude-opus-4-6`)_ with the reduced error set. Fewer errors + strongest model = best chance of finishing.
    - **Run the Verify & Resume block from Step 8.**
      - PASS → land.
      - PARTIAL → resume Pi via `pi -c --session .hermes/sessions/{story_id}.jsonl`, then re-evaluate.
      - NO_PROGRESS → proceed to **Step 9b (Deep Research & Rearchitect)**.
 
-**Why Opus on revisit:** The first pass already exhausted the normal escalation chain (different approach → Haiku → Sonnet → research). If the story is being revisited, it was too hard for lesser models. Opus via `claude -p` is the problem solver — runs on subscription, zero API cost. If Opus fails, Deep Research takes over.
+**Why escalate on revisit:** The first pass already exhausted the normal escalation chain (different approach → research → default model). If the story is being revisited, it was too hard for lesser models. GLM-5.1 via Ollama Cloud is the problem solver — optimized for cross-file reasoning. _(Previously: Opus via `claude -p` on Anthropic subscription. Still valid as fallback.)_ If the escalation model fails, Deep Research takes over.
 
 **Keep revisiting while making progress.** If Deep Research produces a new approach, try it. If that fails but reveals new information, research again. Only file a P0 blocker Beads issue when Deep Research has genuinely exhausted all alternatives AND two consecutive attempts produced zero new insight. Bob is NOT a developer — filing a blocker that requires human code debugging is a dead end. Solve it.
 
@@ -382,17 +384,18 @@ cd /tmp/hermes-prototype-{story_id}
 # Create minimal reproduction with the new approach
 # Run it — does it work?
 ```
-If the prototype passes → apply to the project via `claude -p --model claude-opus-4-6` with the proven approach.
+If the prototype passes → apply to the project via `glm-5.1:cloud` _(fallback: `claude -p --model claude-opus-4-6`)_ with the proven approach.
 If the prototype fails → try the next alternative from Phase 4.
 
 **Phase 6 — Apply & Verify**
-Invoke Opus via subscription with the researched, prototyped, proven approach:
+Invoke the escalation model with the researched, prototyped, proven approach:
 ```
-claude -p "..." --model claude-opus-4-6
+hermes chat -m glm-5.1:cloud -q "..."
+# Fallback: claude -p "..." --model claude-opus-4-6
 ```
 Include: the working prototype code, the root cause analysis, the specific approach to use, and explicit instructions on what NOT to do (all previous failed approaches).
 
-**Run the Verify & Resume block from Step 8** — `claude -p` does not finish the story on its own.
+**Run the Verify & Resume block from Step 8** — the escalation model does not finish the story on its own.
 
 - PASS → return control to the work-loop and proceed to **Step 9 (Land the Plane)**, then LOOP back to Step 2. Vibe-loop's gate ("all stories closed → Phase 10b → 10c → 11") fires automatically once the story lands.
 - PARTIAL → resume Pi via `pi -c --session .hermes/sessions/{story_id}.jsonl --yolo --agent tdd-coder` with the reduced error set, then re-evaluate at Step 8.
