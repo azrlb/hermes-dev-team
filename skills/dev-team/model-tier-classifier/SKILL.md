@@ -10,17 +10,17 @@ Analyzes task descriptions and story metadata to classify complexity and recomme
 
 ## The 5-Tier Model
 
-| Tier | Model (Current: Ollama Cloud) | Legacy (Anthropic/Google) | Use When |
-|------|-------------------------------|--------------------------|----------|
-| 1 | qwen3.5:cloud | google/gemini-2.5-flash | Simple: utility functions, config changes, single-file edits |
-| 2 | qwen3.5:cloud | google/gemini-2.5-flash | Standard-simple: CRUD endpoints, straightforward services |
-| 3 | qwen3.5:cloud | anthropic/claude-sonnet-4-6 | Standard: multi-file features, business logic, API integration |
-| 4 | glm-5.1:cloud | anthropic/claude-opus-4-6 | Complex: architectural changes, concurrency, multi-service, adversarial review |
+| Tier | Model (Local, zero-cloud) | GPU / Port | Use When |
+|------|---------------------------|------------|----------|
+| 1 | qwen3:8b | GPU 2 (P4000), :11434 | Simple: utility functions, config changes, single-file edits |
+| 2 | qwen3:8b | GPU 2 (P4000), :11434 | Standard-simple: CRUD endpoints, straightforward services |
+| 3 | qwen3:8b | GPU 2 (P4000), :11434 | Standard: multi-file features, business logic, API integration |
+| 4 | deepseek-r1:32b | GPU 1 (P40), :8082 | Complex: architectural changes, concurrency, multi-service, adversarial review |
 | 5 | Human (Bob) | N/A | Beyond AI: requires business decisions, creative direction, external negotiations |
 
 ## Classification Rules
 
-### Tier 1-2: Simple (Gemini Flash)
+### Tier 1-2: Simple (qwen3:8b local)
 Indicators:
 - Story touches 1-2 files
 - No dependencies on other stories
@@ -29,7 +29,7 @@ Indicators:
 - Pattern exists in codebase (brownfield_scan finds matches)
 - Story title contains: "add", "rename", "format", "config", "utility", "helper"
 
-### Tier 3: Standard (Claude Sonnet) — DEFAULT
+### Tier 3: Standard (qwen3:8b local) — DEFAULT
 Indicators:
 - Story touches 2-5 files
 - Has acceptance criteria with logic (if/then, validation, error handling)
@@ -37,7 +37,7 @@ Indicators:
 - Estimated 50-200 lines of code
 - Most stories fall here
 
-### Tier 4: Complex (Claude Opus)
+### Tier 4: Complex (deepseek-r1:32b local, reasoning model)
 Indicators:
 - Story touches 5+ files
 - Involves concurrency, race conditions, state machines
@@ -79,10 +79,10 @@ Score each indicator. Default to Tier 3 if ambiguous.
 ```json
 {
   "tier": 3,
-  "model": "qwen3.5:cloud",
+  "model": "qwen3:8b",
   "confidence": 0.85,
   "reasoning": "Multi-file feature with validation logic, standard complexity",
-  "cost_estimate_usd": 0.50
+  "cost_estimate_usd": 0.00
 }
 ```
 

@@ -44,3 +44,8 @@ skills/.hub/lock.json
 
 # Memory locks
 memories/*.lock
+
+# Python bytecode (Hermes plugin runtime)
+__pycache__/
+*.pyc
+*.pyo

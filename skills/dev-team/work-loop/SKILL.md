@@ -57,17 +57,27 @@ npx tsc -p tsconfig.server.json --noEmit 2>&1
 
 **If all checks pass:** Log "Health check PASS" and proceed to Step 2.
 
-**If errors found:** Invoke the `dev-team/health-fix` skill with:
+**If errors found:** Apply the "is this related to the work we are about to do?" filter BEFORE reaching for health-fix.
+
+1. Run `bd ready --json` first.
+2. If at least one ready issue names files or packages that appear in the error output, health-fix is relevant → invoke it with the constraints below.
+3. If NO ready issue relates to the errors, these are **pre-existing project warnings, not our problem this session**. Log `Pre-existing warnings unrelated to queued work — committing with --no-verify` and skip directly to Step 2. Do NOT invoke health-fix.
+
+**Health-fix invocation** (only when errors are related to queued work):
+
+Invoke `dev-team/health-fix` with a hard **single-pass budget**: one invocation, no retries from work-loop's side, 5-minute wall-clock maximum. If health-fix has not returned `PASS` within that window, treat the outcome as `PARTIAL`.
+
 - `error_source`: "eslint+tsc"
 - `error_list`: the error output
 - `scope`: "blocking-only"
 - `project_root`: current directory
 
-Health-fix handles everything: progress-based fixing, model escalation, web research, solution learning. See `health-fix/SKILL.md` for full details.
+Routing:
+- `PASS` → proceed to Step 2, commits verified normally
+- `PARTIAL` or 5-min timeout → proceed to Step 2 with `--no-verify` on all commits this session; remaining errors filed as P0 blockers for next session
+- `FAIL` → log "Health check unresolvable. All errors filed as blockers." and exit
 
-- If health-fix returns `PASS` → proceed to Step 2
-- If health-fix returns `PARTIAL` → proceed to Step 2 (remaining errors are filed as P0 blockers for next session, use `--no-verify` for commits this session)
-- If health-fix returns `FAIL` → log "Health check unresolvable. All errors filed as blockers." and exit
+**RATIONALE:** Pre-existing warnings in any real project are not this session's problem. Health-check exists to catch environmental breakage that would prevent ANY commit landing — not to achieve a clean lint report on a project with accumulated cruft. A small-model Brain that gets trapped in health-fix burns the whole work-loop budget without finishing a single story. The filter above is the bright line between "the repo is broken" and "the repo has warnings."
 
 ---
 
@@ -112,7 +122,7 @@ Read the Beads issue (`bd show {id} --json`) to assemble Pi's task context:
 
 Determine model tier using the 5-tier routing system:
 - Read story complexity from issue metadata `model_tier` field if present
-- Otherwise use `model-tier-classifier` skill or default to Tier 3 (Claude Sonnet)
+- Otherwise use `model-tier-classifier` skill or default to Tier 3 (qwen3:8b local)
 
 ### 6. Check Parallel Safety
 
@@ -125,9 +135,13 @@ If running multiple stories in parallel, check for file overlap between context_
 
 Pi runs as a **child process** (not MCP). Each story gets its own Pi invocation — fully isolated. If Pi crashes, Hermes is unaffected and can retry.
 
-**Default (OpenRouter):**
+**Default (local Ollama via `ollama/qwen3:8b`):**
 ```bash
-cd {project_root} && pi -q "$(cat <<'PROMPT'
+cd {project_root} && pi --print \
+  --provider ollama --model qwen3:8b \
+  --session .hermes/sessions/{story_id}.jsonl \
+  --append-system-prompt ~/.pi/agents/tdd-coder.md \
+  "$(cat <<'PROMPT'
 Read AGENTS.md for project conventions.
 
 ## Story
@@ -147,19 +161,24 @@ Failed approaches (do NOT repeat): {failed_approaches}
 - Follow existing code patterns (read AGENTS.md and nearby source files)
 - When done, write PASS or FAIL to {story_id}.result
 PROMPT
-)" --session .hermes/sessions/{story_id}.jsonl --yolo --agent tdd-coder 2>&1
+)" 2>&1
 ```
 
-**Escalation model stack (current: Ollama Cloud):**
+**Pi CLI syntax notes (Pi 0.67+):**
+- Messages are POSITIONAL, not `-q`
+- Use `--print` for non-interactive mode
+- Use `--append-system-prompt <file>` to load the tdd-coder agent definition
+- No `--yolo` flag exists in Pi; auto-approval happens via settings or extensions
+- Pi uses `--provider` and `--model` for model selection
 
-Primary escalation uses GLM-5.1 via Ollama Cloud — optimized for cross-file reasoning and SWE-bench Pro tasks:
+**Escalation model stack (local, zero-cloud):**
+
+Primary escalation uses DeepSeek-R1 32B via local Ollama on GPU 1 — reasoning model for cross-file logic problems:
 ```
-hermes chat -m glm-5.1:cloud -q "..."
+hermes chat -m deepseek-r1:32b --base-url http://localhost:8082/v1 -q "..."
 ```
 
-_(Legacy/fallback: `claude -p --model claude-opus-4-6` via Anthropic subscription. Still valid if Ollama Cloud is unavailable.)_
-
-Use ONLY for: stalled stories, blocker revisits, Deep Research apply. Normal retries stay on Pi (OpenRouter).
+Use ONLY for: stalled stories, blocker revisits, Deep Research apply. Normal retries stay on Pi (local Ollama qwen3:8b on GPU 2).
 
 **After coding agent returns PASS:** The agent already validated the story's own tests. No separate Quinn run per story.
 
@@ -199,13 +218,13 @@ cd {project_root} && {test_single_cmd} {test_file} 2>&1
 
 **Pi STALLED (same test count for 2 retries):**
 
-> **INVARIANT — read this before invoking the escalation model:** The escalation model (GLM-5.1 or `claude -p`) is a *problem solver*, not a *story finisher*. It does NOT call `bd close`, it does NOT run Quinn, it does NOT advance the loop. Every escalation invocation in this skill MUST be followed by the **Verify & Resume** block below. "Escalation model was invoked" is NEVER a terminal state.
+> **INVARIANT — read this before invoking the escalation model:** The escalation model (deepseek-r1:32b local) is a *problem solver*, not a *story finisher*. It does NOT call `bd close`, it does NOT run Quinn, it does NOT advance the loop. Every escalation invocation in this skill MUST be followed by the **Verify & Resume** block below. "Escalation model was invoked" is NEVER a terminal state.
 
-1. Try different approach (same Pi/OpenRouter model)
-2. Try a second different approach (still Pi/OpenRouter)
+1. Try different approach (same Pi local model)
+2. Try a second different approach (still Pi local)
 3. **Research:** Web search the exact error or failing test. Feed findings to Pi.
 4. Re-invoke Pi with research context
-5. Escalate to `glm-5.1:cloud` via Ollama _(fallback: `claude -p --model claude-opus-4-6`)_ — then run **Verify & Resume** (below).
+5. Escalate to `deepseek-r1:32b` via local Ollama (port 8082) — then run **Verify & Resume** (below).
 6. If Verify & Resume returns NO_PROGRESS: failure-classifier → escalation-handler (research findings included)
 
 #### Verify & Resume (mandatory after every escalation model invocation)
@@ -221,7 +240,10 @@ Branch on the result:
 - **PASS** (`TEST_EXIT == 0`) → proceed to **Step 9 (Land the Plane)**: commit, `bd close {id}`, push, then LOOP back to Step 2.
 - **PARTIAL PROGRESS** (fewer failing tests than the pre-Opus baseline) → resume Pi with the reduced error set, preserving prior context via the stable session file:
   ```bash
-  cd {project_root} && pi -c --session .hermes/sessions/{story_id}.jsonl --yolo --agent tdd-coder \
+  cd {project_root} && pi --print --continue \
+    --provider ollama --model qwen3:8b \
+    --session .hermes/sessions/{story_id}.jsonl \
+    --append-system-prompt ~/.pi/agents/tdd-coder.md \
     -q "Escalation model attempted a fix and made partial progress. Remaining failures: <paste tail of postopus.log>. Continue from here. Do NOT modify test files."
   ```
   Then return to the top of Step 8 (Evaluate Result) with Pi's new output.
@@ -307,10 +329,9 @@ If the closed story test file list is very long (20+), split into batches of 10 
 4. If tests NOW PASS (blocker was resolved by side-effect of another story's work):
    - Cross-check passes → proceed to Land the Plane (Step 9) for this story
 5. If tests still FAIL with the SAME errors as before:
-   - **Escalate to GLM-5.1 (or `claude -p` fallback).** The first attempt used the default tier — if it couldn't solve it, throw the best model at it with full context:
+   - **Escalate to deepseek-r1:32b (local).** The first attempt used the default tier — if it couldn't solve it, throw the reasoning model at it with full context:
      ```
-     hermes chat -m glm-5.1:cloud -q "..."
-     # Fallback: claude -p "..." --model claude-opus-4-6
+     hermes chat -m deepseek-r1:32b --base-url http://localhost:8082/v1 -q "..."
      ```
    - Include in the prompt: the original error, all failed approaches from the Beads issue notes, and any research findings from the first attempt. The escalation model gets the full picture.
    - **Run the Verify & Resume block from Step 8** (re-run `{test_single_cmd} {test_file}`, branch on PASS / PARTIAL / NO_PROGRESS).
@@ -318,13 +339,13 @@ If the closed story test file list is very long (20+), split into batches of 10 
      - PARTIAL → resume Pi via `pi -c --session .hermes/sessions/{story_id}.jsonl` with the reduced error set, then re-evaluate.
      - NO_PROGRESS → proceed to **Step 9b (Deep Research & Rearchitect)**.
 6. If tests FAIL with FEWER errors (partial progress from side-effects):
-   - Re-invoke via `glm-5.1:cloud` _(fallback: `claude -p --model claude-opus-4-6`)_ with the reduced error set. Fewer errors + strongest model = best chance of finishing.
+   - Re-invoke via `deepseek-r1:32b` (local, port 8082) with the reduced error set. Fewer errors + reasoning model = best chance of finishing.
    - **Run the Verify & Resume block from Step 8.**
      - PASS → land.
      - PARTIAL → resume Pi via `pi -c --session .hermes/sessions/{story_id}.jsonl`, then re-evaluate.
      - NO_PROGRESS → proceed to **Step 9b (Deep Research & Rearchitect)**.
 
-**Why escalate on revisit:** The first pass already exhausted the normal escalation chain (different approach → research → default model). If the story is being revisited, it was too hard for lesser models. GLM-5.1 via Ollama Cloud is the problem solver — optimized for cross-file reasoning. _(Previously: Opus via `claude -p` on Anthropic subscription. Still valid as fallback.)_ If the escalation model fails, Deep Research takes over.
+**Why escalate on revisit:** The first pass already exhausted the normal escalation chain (different approach → research → default model). If the story is being revisited, it was too hard for lesser models. DeepSeek-R1 32B (local, port 8082) is the reasoning problem solver — thinks step-by-step for cross-file logic. If the escalation model fails, Deep Research takes over.
 
 **Keep revisiting while making progress.** If Deep Research produces a new approach, try it. If that fails but reveals new information, research again. Only file a P0 blocker Beads issue when Deep Research has genuinely exhausted all alternatives AND two consecutive attempts produced zero new insight. Bob is NOT a developer — filing a blocker that requires human code debugging is a dead end. Solve it.
 
@@ -384,21 +405,20 @@ cd /tmp/hermes-prototype-{story_id}
 # Create minimal reproduction with the new approach
 # Run it — does it work?
 ```
-If the prototype passes → apply to the project via `glm-5.1:cloud` _(fallback: `claude -p --model claude-opus-4-6`)_ with the proven approach.
+If the prototype passes → apply to the project via `deepseek-r1:32b` (local, port 8082) with the proven approach.
 If the prototype fails → try the next alternative from Phase 4.
 
 **Phase 6 — Apply & Verify**
 Invoke the escalation model with the researched, prototyped, proven approach:
 ```
-hermes chat -m glm-5.1:cloud -q "..."
-# Fallback: claude -p "..." --model claude-opus-4-6
+hermes chat -m deepseek-r1:32b --base-url http://localhost:8082/v1 -q "..."
 ```
 Include: the working prototype code, the root cause analysis, the specific approach to use, and explicit instructions on what NOT to do (all previous failed approaches).
 
 **Run the Verify & Resume block from Step 8** — the escalation model does not finish the story on its own.
 
 - PASS → return control to the work-loop and proceed to **Step 9 (Land the Plane)**, then LOOP back to Step 2. Vibe-loop's gate ("all stories closed → Phase 10b → 10c → 11") fires automatically once the story lands.
-- PARTIAL → resume Pi via `pi -c --session .hermes/sessions/{story_id}.jsonl --yolo --agent tdd-coder` with the reduced error set, then re-evaluate at Step 8.
+- PARTIAL → resume Pi via `pi --print --continue --provider ollama --model qwen3:8b --session .hermes/sessions/{story_id}.jsonl --append-system-prompt ~/.pi/agents/tdd-coder.md` with the reduced error set, then re-evaluate at Step 8.
 - NO_PROGRESS → loop back to Phase 1 (Root Cause Archaeology) with the new failure data. Keep looping while producing new insights. Only file a P0 blocker Beads issue when TWO consecutive Deep Research cycles produce zero new insight — tag as `needs-deep-research-round-2` with ALL accumulated research, prototype results, and failed approaches so the next session continues from findings, not from scratch.
 
 **Key principle:** This step produces KNOWLEDGE even if it doesn't produce a fix. Each cycle narrows the problem space. The next cycle (or next session) starts with everything accumulated, not from zero. Bob is NOT a developer — every cycle must resolve autonomously or build toward autonomous resolution.

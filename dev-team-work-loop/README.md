@@ -251,18 +251,18 @@ Per story:
   7. EVALUATE  → Pi says PASS?
                   → CROSS-CHECK: Hermes re-runs {test_single_cmd} independently
                   → Cross-check PASS? Continue. FAIL? Send Pi back with correct runner.
-                  → Pi FAIL? Retry with escalation chain (all via claude -p, subscription):
-                  different approach → retry Pi → web research → minimax-m2.7  → decompose
+                  → Pi FAIL? Retry with escalation chain (all local, zero cloud cost):
+                  different approach → retry Pi → web research → Qwen3.5-35B escalation (localhost:8081) → decompose
                   → Deep Research & Rearchitect (autonomous, no human dead end)
   8. LAND      → targeted regression (closed stories' test files only, NOT full suite)
                 → git commit → bd close → git push → report
   9. EPIC CHECK → all stories in epic closed? → targeted epic test suite
   9a. BLOCKER REVISIT → any blocked stories from this session?
                 → re-run tests (side-effect fixes may have resolved them)
-                → still failing? → minimax-m2.7 → Deep Research & Rearchitect
+                → still failing? → Qwen3.5-35B escalation (localhost:8081) → Deep Research & Rearchitect
   9b. DEEP RESEARCH → root cause archaeology, web search (GitHub issues, SO,
                 changelogs), challenge assumptions, alternative architecture,
-                prototype in isolation, apply via minimax-m2.7 
+                prototype in isolation, apply via Qwen3.5-35B escalation (localhost:8081)
   10. LOOP     → bd ready again → next story → repeat until done
 ```
 
@@ -290,13 +290,13 @@ Escalation chain (steps 2-6 use claude -p = subscription, zero API cost):
   2. Try second different approach (still Pi/OpenRouter)
   3. Web search the error → feed results to Pi
   4. Web search the error → feed results to next attempt
-  5. Ollama cloud minimax-m2.7  (problem solver)
+  5. Qwen3.5-35B escalation brain (localhost:8081) — deep reasoning problem solver
   6. Decompose: split by file, attack individually
   7. Deep research: official docs, changelogs, known issues
   8. Deep Research & Rearchitect: root cause archaeology, targeted web search
      (GitHub issues, Stack Overflow, changelogs, migration guides), challenge
      every assumption, propose 2-3 alternative architectures, prototype in
-     isolation, apply proven fix via Ollama cloud minimax-m2.7
+     isolation, apply proven fix via Qwen3.5-35B escalation (localhost:8081)
   7. P0 blocker Beads issue with ALL accumulated research, prototype results,
      and failed approaches — tagged needs-deep-research-round-2 so next
      session continues from findings (not from scratch)
@@ -459,12 +459,12 @@ hermes chat -s dev-team/vibe-loop \
   -q "Find me an app idea in the fitness space"
 
 # 3. Brownfield — add a feature to existing project
-cd /media/bob/C1/AI_Projects/Crispi-app
+cd /media/bob/C/AI_Projects/Crispi-app
 hermes chat -s dev-team/vibe-loop --yolo \
   -q "Add social sharing to Crispi"
 
 # 4. Brownfield — infra/migration work on existing project
-cd /media/bob/C1/AI_Projects/Crispi-app
+cd /media/bob/C/AI_Projects/Crispi-app
 hermes chat -s dev-team/vibe-loop --yolo \
   -q "Migrate Crispi from Lambda to Railway containers"
 ```
@@ -554,7 +554,7 @@ hermes chat -s dev-team/vibe-loop --yolo \
 hermes chat -s dev-team/vibe-loop --yolo --worktree
 ```
 
-**IMPORTANT:** Hermes uses Ollama Cloud models for all work. Default: `qwen3.5:cloud` for orchestration and coding. Escalation: `glm-5.1:cloud` for complex/adversarial tasks (cross-file reasoning, security review). _(Legacy: Anthropic models via `claude -p --model claude-opus-4-6` on subscription remain a valid fallback if Ollama Cloud is unavailable.)_
+**IMPORTANT:** Hermes uses local models for all work. Default: `NousResearch/Hermes-2-Pro-Llama-3-8B` on Aphrodite (localhost:8080, GPU 0) for orchestration and tool calling. Escalation: `Qwen3.5-35B-A3B-GPTQ-Int4` on Aphrodite (localhost:8081, GPU 1) for complex/adversarial tasks (cross-file reasoning, security review). Hands: `hermes3:8b` on Ollama (localhost:11434, GPU 2) for code execution. Zero cloud — all inference runs locally on your P40s + P4000.
 
 ### Multiple Projects in Parallel
 
@@ -562,15 +562,15 @@ Each project gets its own terminal and Hermes instance. No conflicts — separat
 
 ```bash
 # Terminal 1
-cd /media/bob/C1/AI_Projects/Crispi-app
+cd /media/bob/C/AI_Projects/Crispi-app
 hermes chat -s dev-team/vibe-loop --yolo
 
 # Terminal 2
-cd /media/bob/C1/AI_Projects/FlowInCash
+cd /media/bob/C/AI_Projects/FlowInCash
 hermes chat -s dev-team/vibe-loop --yolo
 
 # Terminal 3
-cd /media/bob/C1/AI_Projects/LivingApp-Platform
+cd /media/bob/C/AI_Projects/LivingApp-Platform
 hermes chat -s dev-team/vibe-loop --yolo
 ```
 
@@ -655,4 +655,4 @@ Re-run after any edit to `~/.hermes/skills/dev-team/work-loop/SKILL.md`, `escala
 | model-tier-classifier | `~/.hermes/skills/dev-team/model-tier-classifier/SKILL.md` | Hermes skill: model selection                                                       |
 | AGENTS.md             | `<project>/AGENTS.md`                                      | Per-project context for Pi (stack block auto-generated by stack-detect)             |
 | Story files           | `<project>/docs/stories/*.md`                              | Story specs                                                                         |
-| Beads DB              | `<project>/.beads/*.db`                                    | Issue tracking                                                                      |
+| Beads DB              | `<project>/.beads/*.db`                                    | Issue trackingread t                                                                |

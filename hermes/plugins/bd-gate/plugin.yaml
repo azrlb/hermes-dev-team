@@ -1,0 +1,6 @@
+name: bd-gate
+version: 0.1.0
+description: Block `bd close` when no commit on the current branch references the issue, and block `git commit` with no staged changes. Framework-level enforcement for the local Hermes dev-team workflow.
+author: Bob (local dev-team)
+provides_hooks:
+  - pre_tool_call
