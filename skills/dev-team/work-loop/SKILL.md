@@ -99,20 +99,32 @@ bd update {id} --claim
 
 ### 4. Pre-Flight Story Validation
 
-For each claimed issue, validate from Beads issue metadata before handing to Pi:
+**FAST-PATH — self-contained issues:** If `bd show {id} --json` shows the issue's `description` is a self-contained spec (≥100 chars, contains direct task instructions like "Fix X", "Add Y", "Implement Z", "Verify W") AND the issue metadata does NOT reference a `story_file` / `test_file` / `context_files`, **skip this entire step.** The description IS the spec. Proceed directly to Step 5 with `self_contained=true`. Self-contained issues are typical for one-off tickets, eval challenges, and bugs filed without a multi-file BMAD spec.
+
+**Story-file path — only when issue metadata explicitly references a `story_file`:**
 
 | Check | Source | On Fail |
 |-------|--------|---------|
-| `story_file` exists on disk | issue metadata or description | `bd update {id} --status=open --append-notes "Pre-flight fail: story_file missing"`, skip |
-| `test_file` exists on disk | issue metadata or description | `bd update {id} --status=open --append-notes "Pre-flight fail: test_file missing"`, skip |
+| `story_file` exists on disk | issue metadata | `bd update {id} --status=open --append-notes "Pre-flight fail: story_file missing"`, skip |
+| `test_file` exists on disk | issue metadata or story frontmatter | `bd update {id} --status=open --append-notes "Pre-flight fail: test_file missing"`, skip |
 | Story frontmatter parseable | story file | `bd update {id} --status=open --append-notes "Pre-flight fail: bad frontmatter"`, skip |
 | All `context_files` exist | story frontmatter | `bd update {id} --status=open --append-notes "Pre-flight fail: context_file missing"`, skip |
 
-If validation fails, release the claim and skip to next issue.
+If validation fails on a story-file-path issue, release the claim and skip to next issue. **Do NOT apply these checks to self-contained issues — the absence of a story_file is not a failure for them, it's the normal case.**
 
 ### 5. Build Context
 
-Read the Beads issue (`bd show {id} --json`) to assemble Pi's task context:
+Read the Beads issue (`bd show {id} --json`) to assemble Pi's task context.
+
+**Self-contained issue path** (Step 4 fast-path applied):
+- Spec content: the issue `description` itself
+- Test command: extract from the description if it names one (look for `Run:`, `Tests:`, `vitest`, `npm test`, etc.); otherwise infer from existing test patterns near the file being changed (`find -name '*.test.*' -path "*<area>*"`)
+- Test file: extract from the description's test command, OR derive by convention from the file being modified (e.g., `src/foo.ts` → `src/foo.test.ts` or `src/__tests__/foo.test.ts`)
+- Checkpoints / failed_approaches: read from issue `notes` field if present; otherwise empty
+- `budget_usd`: from metadata or `STORY_BUDGET_USD` env var
+- Set `STORY_ID={id}` env var for Pi extensions
+
+**Story-file path:**
 - `story_file` content (the spec)
 - `test_file` path (what tests to pass)
 - `checkpoints` from metadata (prior progress, if retrying)
