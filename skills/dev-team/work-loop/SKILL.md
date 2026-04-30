@@ -163,10 +163,12 @@ cd {project_root} && pi --print --provider ollama --model devstral-small-2:24b -
 
 **Escalation model stack (local, zero-cloud):**
 
-Primary escalation uses DeepSeek-R1 32B via local Ollama on GPU 1 — reasoning model for cross-file logic problems:
+Primary escalation uses DeepSeek-R1 32B via local Ollama on GPU 1 — reasoning model for cross-file logic problems. Dispatch via `pi` using the `ollama-quinn` provider already configured in `~/.pi/agent/models.json`:
 ```
-hermes chat -m deepseek-r1:32b --base-url http://localhost:8082/v1 -q "..."
+pi --print --no-tools --provider ollama-quinn --model deepseek-r1:32b "..."
 ```
+
+`--no-tools` is mandatory: deepseek-r1:32b is a reasoning model and rejects requests that include a tools array (`400 does not support tools`). The Quinn step is pure text in / text out — feed it the failing test output, the source files, and the question; it returns a strategy or a fix in plain text.
 
 Use ONLY for: stalled stories, blocker revisits, Deep Research apply. Normal retries stay on Pi (local Ollama devstral-small-2:24b on GPU 2).
 
@@ -338,7 +340,7 @@ If the closed story test file list is very long (20+), split into batches of 10 
 5. If tests still FAIL with the SAME errors as before:
    - **Escalate to deepseek-r1:32b (local).** The first attempt used the default tier — if it couldn't solve it, throw the reasoning model at it with full context:
      ```
-     hermes chat -m deepseek-r1:32b --base-url http://localhost:8082/v1 -q "..."
+     pi --print --no-tools --provider ollama-quinn --model deepseek-r1:32b "..."
      ```
    - Include in the prompt: the original error, all failed approaches from the Beads issue notes, and any research findings from the first attempt. The escalation model gets the full picture.
    - **Run the Verify & Resume block from Step 8** (re-run `{test_single_cmd} {test_file}`, branch on PASS / PARTIAL / NO_PROGRESS).
@@ -418,7 +420,7 @@ If the prototype fails → try the next alternative from Phase 4.
 **Phase 6 — Apply & Verify**
 Invoke the escalation model with the researched, prototyped, proven approach:
 ```
-hermes chat -m deepseek-r1:32b --base-url http://localhost:8082/v1 -q "..."
+pi --print --no-tools --provider ollama-quinn --model deepseek-r1:32b "..."
 ```
 Include: the working prototype code, the root cause analysis, the specific approach to use, and explicit instructions on what NOT to do (all previous failed approaches).
 
