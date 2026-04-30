@@ -122,7 +122,7 @@ Read the Beads issue (`bd show {id} --json`) to assemble Pi's task context:
 
 Determine model tier using the 5-tier routing system:
 - Read story complexity from issue metadata `model_tier` field if present
-- Otherwise use `model-tier-classifier` skill or default to Tier 3 (qwen3:8b local)
+- Otherwise use `model-tier-classifier` skill or default to Tier 3 (devstral-small-2:24b local)
 
 ### 6. Check Parallel Safety
 
@@ -135,33 +135,22 @@ If running multiple stories in parallel, check for file overlap between context_
 
 Pi runs as a **child process** (not MCP). Each story gets its own Pi invocation — fully isolated. If Pi crashes, Hermes is unaffected and can retry.
 
-**Default (local Ollama via `ollama/qwen3:8b`):**
+**Default (local Ollama via `ollama/devstral-small-2:24b`):**
+
+**CRITICAL: Use the two-step file-based dispatch pattern, NOT inline heredoc.**
+LLMs unreliably emit multi-line heredoc syntax — newlines collapse and `PROMPT\n)"` becomes `PROMPT")` which breaks the heredoc terminator. Step 1 writes the prompt to a file via your `write_file` tool (newlines are preserved). Step 2 passes the file content to Pi via `$(cat ...)`.
+
+**Step 1 — Write the prompt to a file (use your `write_file` tool, NOT a shell heredoc):**
+```
+write_file(
+  path: "{project_root}/.hermes/sessions/{story_id}.prompt.txt",
+  content: "Read AGENTS.md for project conventions.\n\n## Story\n{story_content}\n\n## Tests to Pass\nRun: {test_single_cmd} {test_file}\nMake ALL tests pass.\nIMPORTANT: Use ONLY the test command above.\n\n## Prior Context\nCheckpoints: {checkpoints}\nFailed approaches (do NOT repeat): {failed_approaches}\n\n## Rules\n- NEVER modify test files — tests are the contract\n- Follow existing code patterns (read AGENTS.md and nearby source files)\n- When done, write PASS or FAIL to {story_id}.result"
+)
+```
+
+**Step 2 — Dispatch Pi (single-line bash, no heredoc):**
 ```bash
-cd {project_root} && pi --print \
-  --provider ollama --model qwen3:8b \
-  --session .hermes/sessions/{story_id}.jsonl \
-  --append-system-prompt ~/.pi/agents/tdd-coder.md \
-  "$(cat <<'PROMPT'
-Read AGENTS.md for project conventions.
-
-## Story
-{story_content}
-
-## Tests to Pass
-Run: {test_single_cmd} {test_file}
-Make ALL tests pass.
-IMPORTANT: Use ONLY the test command above. It was auto-detected from this project's package.json by stack-detect.
-
-## Prior Context
-Checkpoints: {checkpoints}
-Failed approaches (do NOT repeat): {failed_approaches}
-
-## Rules
-- NEVER modify test files — tests are the contract
-- Follow existing code patterns (read AGENTS.md and nearby source files)
-- When done, write PASS or FAIL to {story_id}.result
-PROMPT
-)" 2>&1
+cd {project_root} && pi --print --provider ollama --model devstral-small-2:24b --session .hermes/sessions/{story_id}.jsonl --append-system-prompt ~/.pi/agents/tdd-coder.md "$(cat .hermes/sessions/{story_id}.prompt.txt)" 2>&1
 ```
 
 **Pi CLI syntax notes (Pi 0.67+):**
@@ -170,6 +159,7 @@ PROMPT
 - Use `--append-system-prompt <file>` to load the tdd-coder agent definition
 - No `--yolo` flag exists in Pi; auto-approval happens via settings or extensions
 - Pi uses `--provider` and `--model` for model selection
+- **Hands model MUST emit native OpenAI `tool_calls`.** `devstral-small-2:24b` and `qwen3:8b` do; `devstral-small-2:24b` does NOT (emits JSON-in-text, Pi silently ignores). Verify any new candidate with the discriminator: `pi --print --provider ollama --model <X> --tools read,write,bash "Create a file at /tmp/pi-tool-test.txt containing 'hello'."` — file must exist after the run.
 
 **Escalation model stack (local, zero-cloud):**
 
@@ -178,7 +168,7 @@ Primary escalation uses DeepSeek-R1 32B via local Ollama on GPU 1 — reasoning 
 hermes chat -m deepseek-r1:32b --base-url http://localhost:8082/v1 -q "..."
 ```
 
-Use ONLY for: stalled stories, blocker revisits, Deep Research apply. Normal retries stay on Pi (local Ollama qwen3:8b on GPU 2).
+Use ONLY for: stalled stories, blocker revisits, Deep Research apply. Normal retries stay on Pi (local Ollama devstral-small-2:24b on GPU 2).
 
 **After coding agent returns PASS:** The agent already validated the story's own tests. No separate Quinn run per story.
 
@@ -210,8 +200,10 @@ Apply progress-aware monitoring using the same detection signals as `dev-team/he
 cd {project_root} && {test_single_cmd} {test_file} 2>&1
 ```
 
-- If cross-check PASSES → Proceed to Land the Plane (Step 9)
+- If cross-check PASSES → Proceed to Land the Plane (Step 9). The closing commit's ATTEST step will re-run the same command and write `.hermes/sessions/{story_id}.test-result` with `PASS <HEAD-sha>`. bd-gate refuses `bd close` without that file.
 - If cross-check FAILS → Pi's PASS was unreliable. Treat as Pi FAIL. Re-invoke Pi with explicit instructions: "Your previous PASS was incorrect. The project test runner (`{test_single_cmd}`) shows failures. Fix these tests. Do NOT use any other test runner."
+
+**NEVER use `git stash` to clean the working tree before close.** bd-gate counts stash entries and refuses to close any issue while the stash is non-empty (stashed work hides real changes from commits). If a stash exists from prior work, `git stash pop` and reconcile, or `git stash drop` if it's irrelevant.
 
 **Pi FAIL with PROGRESS (test count increasing):**
 - Re-invoke with checkpoint context. No attempt limit while progress is being made.
@@ -237,11 +229,11 @@ TEST_EXIT=$?
 
 Branch on the result:
 
-- **PASS** (`TEST_EXIT == 0`) → proceed to **Step 9 (Land the Plane)**: commit, `bd close {id}`, push, then LOOP back to Step 2.
+- **PASS** (`TEST_EXIT == 0`) → proceed to **Step 9 (Land the Plane)**: commit, ATTEST (write `.hermes/sessions/{story_id}.test-result` containing `PASS $(git rev-parse HEAD)`), `bd close {id}`, push, then LOOP back to Step 2.
 - **PARTIAL PROGRESS** (fewer failing tests than the pre-Opus baseline) → resume Pi with the reduced error set, preserving prior context via the stable session file:
   ```bash
   cd {project_root} && pi --print --continue \
-    --provider ollama --model qwen3:8b \
+    --provider ollama --model devstral-small-2:24b \
     --session .hermes/sessions/{story_id}.jsonl \
     --append-system-prompt ~/.pi/agents/tdd-coder.md \
     -q "Escalation model attempted a fix and made partial progress. Remaining failures: <paste tail of postopus.log>. Continue from here. Do NOT modify test files."
@@ -305,8 +297,23 @@ If the closed story test file list is very long (20+), split into batches of 10 
 
 **Landing sequence (after approval or auto-approve):**
 1. **COMMIT** — auto-committer stages non-test files, `git commit`
-2. **UPDATE BEADS** — `bd close {id}` with result metadata + commit SHA
-3. **PUSH** — `git pull --rebase && bd sync && git push`
+2. **ATTEST** — re-run the project test command against the just-committed HEAD, then write `.hermes/sessions/{id}.test-result`. **bd-gate enforces this file at close time** — without it, `bd close {id}` is blocked. Pi's self-reported PASS is NOT trusted; the project test command is the source of truth.
+   ```bash
+   cd {project_root}
+   if {test_single_cmd} {test_file} 2>&1; then
+     mkdir -p .hermes/sessions
+     echo "PASS $(git rev-parse HEAD)" > .hermes/sessions/{id}.test-result
+   else
+     # Test failed against the closing commit — DO NOT proceed to bd close.
+     # Loop back to Step 7 (re-invoke Pi with the failure output).
+     mkdir -p .hermes/sessions
+     echo "FAIL $(git rev-parse HEAD)" > .hermes/sessions/{id}.test-result
+     # then: handle as Pi FAIL — see Step 8
+   fi
+   ```
+   The file must contain `PASS <sha>` where `<sha>` matches HEAD. If a later commit lands before close, ATTEST must be re-run.
+3. **UPDATE BEADS** — `bd close {id}` with result metadata + commit SHA. bd-gate verifies: (a) at least one commit referencing `{id}` touches files outside `.beads/`, (b) `git stash list` is empty, (c) the attestation file exists with `PASS <HEAD-sha>`.
+4. **PUSH** — `git pull --rebase && bd sync && git push`
 4. **DISCOVER** — File new Beads issues for any tech-debt or bugs found during implementation
 5. **REPORT** — Telegram: "{id} PASS | {duration} | {tests_passed}/{tests_total}"
 6. **EPIC CHECK** — Check if all stories in the current epic are now closed (see Step 10)
@@ -418,7 +425,7 @@ Include: the working prototype code, the root cause analysis, the specific appro
 **Run the Verify & Resume block from Step 8** — the escalation model does not finish the story on its own.
 
 - PASS → return control to the work-loop and proceed to **Step 9 (Land the Plane)**, then LOOP back to Step 2. Vibe-loop's gate ("all stories closed → Phase 10b → 10c → 11") fires automatically once the story lands.
-- PARTIAL → resume Pi via `pi --print --continue --provider ollama --model qwen3:8b --session .hermes/sessions/{story_id}.jsonl --append-system-prompt ~/.pi/agents/tdd-coder.md` with the reduced error set, then re-evaluate at Step 8.
+- PARTIAL → resume Pi via `pi --print --continue --provider ollama --model devstral-small-2:24b --session .hermes/sessions/{story_id}.jsonl --append-system-prompt ~/.pi/agents/tdd-coder.md` with the reduced error set, then re-evaluate at Step 8.
 - NO_PROGRESS → loop back to Phase 1 (Root Cause Archaeology) with the new failure data. Keep looping while producing new insights. Only file a P0 blocker Beads issue when TWO consecutive Deep Research cycles produce zero new insight — tag as `needs-deep-research-round-2` with ALL accumulated research, prototype results, and failed approaches so the next session continues from findings, not from scratch.
 
 **Key principle:** This step produces KNOWLEDGE even if it doesn't produce a fix. Each cycle narrows the problem space. The next cycle (or next session) starts with everything accumulated, not from zero. Bob is NOT a developer — every cycle must resolve autonomously or build toward autonomous resolution.

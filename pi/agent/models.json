@@ -11,8 +11,22 @@
       },
       "models": [
         {
+          "id": "devstral-small-2:24b",
+          "name": "Devstral Small 2 24B (Hands T3 - A4000, native tool calls)",
+          "reasoning": false,
+          "contextWindow": 32768,
+          "maxTokens": 4096
+        },
+        {
+          "id": "qwen2.5-coder:14b",
+          "name": "Qwen2.5 Coder 14B (Hands - DOES NOT TOOL-CALL via Pi; kept for text completion only)",
+          "reasoning": false,
+          "contextWindow": 32768,
+          "maxTokens": 4096
+        },
+        {
           "id": "qwen3:8b",
-          "name": "Qwen3 8B (Hands - P4000)",
+          "name": "Qwen3 8B (Hands T1 - A4000, cheap tier with native tool calls)",
           "reasoning": true,
           "contextWindow": 32768,
           "maxTokens": 4096
