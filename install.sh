@@ -53,9 +53,10 @@ link "$REPO_DIR/pi/agents" "$HOME/.pi/agents"
 echo
 
 echo "Hermes plugins:"
-link "$REPO_DIR/hermes/plugins/bd-gate" "$HOME/.hermes/plugins/bd-gate"
+link "$REPO_DIR/hermes/plugins/bd-gate"        "$HOME/.hermes/plugins/bd-gate"
+link "$REPO_DIR/hermes/plugins/numctx-verify"  "$HOME/.hermes/plugins/numctx-verify"
 echo
 
 echo "Done. Verify with:"
-echo "  hermes plugins list | grep bd-gate"
+echo "  hermes plugins list | grep -E 'bd-gate|numctx-verify'"
 echo "  pi --print --provider ollama --model qwen3:8b -q 'hi'"

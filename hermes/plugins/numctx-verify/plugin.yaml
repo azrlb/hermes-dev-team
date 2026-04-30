@@ -1,0 +1,6 @@
+name: numctx-verify
+version: 0.1.0
+description: Validate that every Ollama-backed provider in Hermes config serves at least the context length Hermes claims to use. Catches the silent-truncation bug that cost 7 eval rounds — Ollama defaults to 2k-4k num_ctx when no PARAMETER num_ctx is in the modelfile, but Hermes config's context_length value is aspirational and has no power over what Ollama serves.
+author: Bob (local dev-team)
+provides_hooks:
+  - on_session_start
