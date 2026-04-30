@@ -15,10 +15,15 @@ block directive when:
   Gate 3.  `bd close <id>` is called while `git stash list` has entries —
            stashed work is hidden from commits and frequently masks an
            incomplete fix.
-  Gate 4.  `bd close <id>` is called without a fresh PASS attestation at
-           `.hermes/sessions/<id>.test-result`. The file must contain
-           `PASS <sha>` where <sha> matches HEAD, proving the project's own
-           test command was re-run against the actual closing commit.
+  Gate 4.  `bd close <id>` is called without a verified PASS for the test.
+           When `.hermes/sessions/<id>.prompt.txt` exists with a `Run:` line
+           naming a known test runner (vitest/jest/mocha/npm test/pytest/
+           cargo test/go test), bd-gate executes that command itself with a
+           5-min timeout and writes the authoritative `.test-result` based
+           on the actual exit code. Brain-written PASS attestations are
+           overwritten — eval-5 v2 (2026-04-30) showed the brain fabricating
+           PASS while the actual file was untouched at the wrong path.
+           Fallback (no prompt / unknown runner): legacy file-format check.
   Gate 5.  Any commit referencing <id> MODIFIED, DELETED, or RENAMED a test
            file. Allowed: ADDED test files (legitimate new test work). Test
            paths: `**/*.test.*`, `**/*.spec.*`, `**/__tests__/**`,
@@ -127,6 +132,88 @@ def _read_test_result(issue_id: str, cwd: Optional[str]) -> Tuple[bool, str]:
     except Exception as exc:
         logger.debug("bd-gate: test-result probe %s failed: %s", path, exc)
         return (False, "")
+
+
+# ─── Gate 4 re-run: bd-gate executes the test itself ──────────────────────────
+# Allowlist of test-runner command shapes. The Run: line in the brain's
+# prompt file is consulted, but bd-gate refuses to execute anything that
+# doesn't match a known runner — the prompt is brain-written and untrusted.
+_TEST_RUNNER_PATTERNS = (
+    re.compile(r"^(?:npx\s+|pnpm\s+|yarn\s+|bun\s+)?vitest\b", re.IGNORECASE),
+    re.compile(r"^(?:npx\s+|pnpm\s+|yarn\s+|bun\s+)?jest\b", re.IGNORECASE),
+    re.compile(r"^(?:npx\s+|pnpm\s+|yarn\s+|bun\s+)?mocha\b", re.IGNORECASE),
+    re.compile(r"^(?:npm|pnpm|yarn|bun)\s+(?:run\s+)?test\b", re.IGNORECASE),
+    re.compile(r"^go\s+test\b", re.IGNORECASE),
+    re.compile(r"^(?:python3?\s+-m\s+)?pytest\b", re.IGNORECASE),
+    re.compile(r"^cargo\s+test\b", re.IGNORECASE),
+)
+
+_RUN_LINE_RE = re.compile(r"^\s*Run:\s*(.+?)\s*$", re.IGNORECASE)
+_TEST_RERUN_TIMEOUT_SEC = 300  # 5 min — vitest cold start is slow
+
+
+def _find_test_command(issue_id: str, cwd: Optional[str]) -> Optional[str]:
+    """Locate the test command for this issue from `.hermes/sessions/<id>.prompt.txt`.
+
+    The brain writes this file (Step 7 of work-loop) with a `Run:` line that
+    declares the test command for Pi. bd-gate parses it, validates against
+    the test-runner allowlist, and returns the command string. Returns None
+    if no prompt file, no Run: line, or the command isn't a recognized runner.
+    """
+    base = Path(cwd) if cwd else Path.cwd()
+    path = base / ".hermes" / "sessions" / f"{issue_id}.prompt.txt"
+    try:
+        if not path.is_file():
+            return None
+        content = path.read_text()
+    except Exception as exc:
+        logger.debug("bd-gate: prompt.txt read error on %s: %s", issue_id, exc)
+        return None
+    for raw_line in content.splitlines():
+        m = _RUN_LINE_RE.match(raw_line)
+        if not m:
+            continue
+        cmd = m.group(1).strip()
+        if not cmd:
+            continue
+        for pat in _TEST_RUNNER_PATTERNS:
+            if pat.match(cmd):
+                return cmd
+        logger.debug("bd-gate: Run: command for %s not in allowlist: %r",
+                     issue_id, cmd)
+        return None
+    return None
+
+
+def _run_test_command(cmd: str, cwd: Optional[str]) -> Tuple[bool, str]:
+    """Execute the test command directly. Returns (passed, output_tail).
+    Timeout, non-zero exit, and exec errors all return (False, reason)."""
+    try:
+        result = subprocess.run(
+            cmd,
+            shell=True,
+            cwd=cwd,
+            capture_output=True,
+            text=True,
+            timeout=_TEST_RERUN_TIMEOUT_SEC,
+        )
+        combined = (result.stdout or "") + (result.stderr or "")
+        return (result.returncode == 0, combined[-1500:])
+    except subprocess.TimeoutExpired:
+        return (False, f"<TIMEOUT after {_TEST_RERUN_TIMEOUT_SEC}s>")
+    except Exception as exc:
+        return (False, f"<EXCEPTION: {exc}>")
+
+
+def _write_attest_file(issue_id: str, head_sha: str, cwd: Optional[str]) -> None:
+    """Write the authoritative `.test-result` after a bd-gate-verified test pass."""
+    try:
+        base = Path(cwd) if cwd else Path.cwd()
+        path = base / ".hermes" / "sessions" / f"{issue_id}.test-result"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(f"PASS {head_sha}\n# verified-by-bd-gate\n")
+    except Exception as exc:
+        logger.debug("bd-gate: failed to write authoritative attestation: %s", exc)
 
 
 # ─── Test-file detection (Gate 5) ─────────────────────────────────────────────
@@ -330,37 +417,60 @@ def _check_close(issue_id: str, cwd: Optional[str]) -> Optional[Dict[str, str]]:
         logger.debug("bd-gate: stash probe error on %s, failing open: %s",
                      issue_id, exc)
 
-    # Gate 4: fresh PASS attestation matching HEAD.
+    # Gate 4: bd-gate-verified test attestation.
+    #
+    # Authoritative path: when `<id>.prompt.txt` exists with a `Run:` line for
+    # a known test runner, bd-gate runs the test ITSELF and overwrites the
+    # `.test-result` file with its own verdict. The brain's self-reported PASS
+    # is not trusted (eval-5 v2 closed an issue with a fabricated attestation
+    # while the actual file was untouched at the wrong path).
+    #
+    # Fallback path: when no prompt or no recognizable Run: line is found,
+    # fall back to the legacy file-format check (preserves backward compat
+    # for hand-written attestations and non-eval workflows).
     try:
         head = _head_sha(cwd)
-        exists, content = _read_test_result(issue_id, cwd)
-        if not exists:
-            return _block(
-                f"Cannot close {issue_id}: missing test attestation at "
-                f".hermes/sessions/{issue_id}.test-result. Run the project's own "
-                f"test command against the closing commit, then write `PASS <sha>` "
-                f"to that file (sha = current HEAD). bd-gate will not trust an "
-                f"agent's self-reported PASS."
-            )
-        first = content.split("\n", 1)[0].strip()
-        parts = first.split()
-        if len(parts) < 2 or parts[0] != "PASS":
-            return _block(
-                f"Cannot close {issue_id}: test attestation does not start with "
-                f"`PASS <sha>` (got: {first!r}). The project's own test command "
-                f"must succeed before close."
-            )
-        attest_sha = parts[1]
-        if head and not (attest_sha == head or head.startswith(attest_sha)
-                         or attest_sha.startswith(head)):
-            return _block(
-                f"Cannot close {issue_id}: stale test attestation. File records "
-                f"PASS for {attest_sha[:12]} but HEAD is {head[:12]}. Re-run the "
-                f"test command against the current HEAD and rewrite the file."
-            )
+        test_cmd = _find_test_command(issue_id, cwd)
+        if test_cmd and head:
+            ok, output_tail = _run_test_command(test_cmd, cwd)
+            if not ok:
+                return _block(
+                    f"Cannot close {issue_id}: bd-gate re-ran the test command "
+                    f"(`{test_cmd}`) and it failed or timed out. The brain's "
+                    f"self-reported PASS is not trusted by bd-gate.\n"
+                    f"Last output:\n{output_tail[-800:]}"
+                )
+            _write_attest_file(issue_id, head, cwd)
+        else:
+            # Legacy file-format-only check.
+            exists, content = _read_test_result(issue_id, cwd)
+            if not exists:
+                return _block(
+                    f"Cannot close {issue_id}: missing test attestation at "
+                    f".hermes/sessions/{issue_id}.test-result. Run the project's own "
+                    f"test command against the closing commit, then write `PASS <sha>` "
+                    f"to that file (sha = current HEAD). bd-gate will not trust an "
+                    f"agent's self-reported PASS without verification."
+                )
+            first = content.split("\n", 1)[0].strip()
+            parts = first.split()
+            if len(parts) < 2 or parts[0] != "PASS":
+                return _block(
+                    f"Cannot close {issue_id}: test attestation does not start with "
+                    f"`PASS <sha>` (got: {first!r}). The project's own test command "
+                    f"must succeed before close."
+                )
+            attest_sha = parts[1]
+            if head and not (attest_sha == head or head.startswith(attest_sha)
+                             or attest_sha.startswith(head)):
+                return _block(
+                    f"Cannot close {issue_id}: stale test attestation. File records "
+                    f"PASS for {attest_sha[:12]} but HEAD is {head[:12]}. Re-run the "
+                    f"test command against the current HEAD and rewrite the file."
+                )
     except Exception as exc:
-        logger.debug("bd-gate: test-result probe error on %s, failing open: %s",
-                     issue_id, exc)
+        logger.debug("bd-gate: Gate 4 (test verification) error on %s, "
+                     "failing open: %s", issue_id, exc)
 
     # Gates 5/6/7 share these probes — compute once.
     try:
