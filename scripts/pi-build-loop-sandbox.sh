@@ -65,11 +65,19 @@ echo "============================================================"
 git -C "$SOURCE_REPO" worktree add --detach "$SANDBOX" "$BRANCH" || {
   echo "[sandbox] FATAL: worktree add failed"; exit 1; }
 
-# 2. Disconnect from GitHub. Any `git push`, `git fetch`, etc. inside the
-#    sandbox will now fail rather than reach your real remote.
+# 2. Disconnect from GitHub WITHOUT touching the main repo's git config.
+#    Important: `git worktree` shares .git/config between the main repo and
+#    its worktrees. Running `git remote remove origin` in the worktree
+#    actually removes origin from the main repo too — discovered the hard
+#    way 2026-05-01 when this wrapper bricked the user's Crispi-app remote.
+#    Instead, route HTTPS through a non-routable proxy via env vars
+#    inherited by all child processes. NO_PROXY exempts localhost so Quinn
+#    (and any other local services) remain reachable.
 cd "$SANDBOX"
-git remote remove origin 2>&1 || true
-echo "[sandbox] origin remote removed — sandbox cannot push or pull from GitHub"
+export HTTPS_PROXY="http://127.0.0.1:1"
+export HTTP_PROXY="http://127.0.0.1:1"
+export NO_PROXY="localhost,127.0.0.1,::1"
+echo "[sandbox] HTTPS proxy set to dead address — sandbox cannot push or pull from GitHub (localhost still reachable)"
 
 # 2b. Symlink dependency directories from the source repo. node_modules,
 #     vendor/, etc. are gitignored so the worktree starts without them.
