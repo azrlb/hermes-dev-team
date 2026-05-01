@@ -57,6 +57,12 @@ link "$REPO_DIR/hermes/plugins/bd-gate"        "$HOME/.hermes/plugins/bd-gate"
 link "$REPO_DIR/hermes/plugins/numctx-verify"  "$HOME/.hermes/plugins/numctx-verify"
 echo
 
+echo "Scripts (symlinked to ~/.local/bin so they're on PATH):"
+link "$REPO_DIR/scripts/pi-build-loop.sh" "$HOME/.local/bin/pi-build-loop.sh"
+echo
+
 echo "Done. Verify with:"
 echo "  hermes plugins list | grep -E 'bd-gate|numctx-verify'"
-echo "  pi --print --provider ollama --model qwen3:8b -q 'hi'"
+echo "  hermes skills list | grep -E 'vibe-loop|vibe-plan|work-loop'"
+echo "  pi-build-loop.sh --help 2>&1 | head -5"
+echo "  pi --print --provider ollama --model qwen3:8b 'hi'"

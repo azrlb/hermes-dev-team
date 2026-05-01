@@ -939,7 +939,22 @@ Discovery is complete. Prepare for implementation.
    Beads issues: {count}
    Starting implementation...
    ```
-6. **Immediately transition to dev (Phase 10).** Do NOT pause, ask for confirmation, or wait for user input. In `--yolo` mode the pipeline is continuous — discovery flows directly into implementation with zero human gates. Even in interactive mode, proceed unless the user explicitly said to stop after discovery. **⚠ RE-READ "Yolo Mode — No Human Gates" section NOW before outputting anything. If your next action is text without a tool call, you are about to violate the yolo rule.**
+6. **Decide: continue to Phase 10, or STOP here?**
+
+   **EXCEPTION — Planning-only mode (hybrid Hermes-plans / Pi-builds):**
+   If you were invoked via the `dev-team/vibe-plan` skill, OR the user's prompt explicitly says one of:
+     - "STOP at Phase 9"
+     - "planning-only"
+     - "discovery-only"
+     - "do not enter Phase 10"
+   ...then DO NOT enter Phase 10. The build phase runs separately via `pi-build-loop.sh` (in `~/.hermes/skills/dev-team/build/` or the hermes-dev-team repo). Exit with a one-line summary:
+   ```
+   Discovery complete: {N} stories, {M} beads issues filed. Run pi-build-loop.sh to drain the queue.
+   ```
+   Background: brain capability ceiling at runtime dispatch (eval rounds 1-7, 2026-04-30) makes brain-orchestrated Phase 10 unreliable. Hybrid moves dispatch to Pi-side bash that consumes story_file metadata directly. See `~/.claude/projects/-home-bob-ai-rig/memory/project_eval_findings.md` Round 6 for full context.
+
+   **DEFAULT — full pipeline (existing behavior):**
+   **Immediately transition to dev (Phase 10).** Do NOT pause, ask for confirmation, or wait for user input. In `--yolo` mode the pipeline is continuous — discovery flows directly into implementation with zero human gates. Even in interactive mode, proceed unless the user explicitly said to stop after discovery. **⚠ RE-READ "Yolo Mode — No Human Gates" section NOW before outputting anything. If your next action is text without a tool call, you are about to violate the yolo rule.**
 
 ---
 
