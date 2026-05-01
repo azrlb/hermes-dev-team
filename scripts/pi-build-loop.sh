@@ -57,9 +57,10 @@ echo "Log:          $LOG" | tee -a "$LOG"
 echo "" | tee -a "$LOG"
 
 # Get the next ready issue and emit:
-#   <id>\t<title>\t<priority>\t<story_file>\t<test_file>\t<description>
-# Returns empty if no work. story_file/test_file extracted from issue notes
-# field (vibe-loop Phase 8 writes them as `story_file=... | test_file=...`).
+#   <id>\t<title>\t<priority>\t<story_file>\t<test_file>\t<test_command>\t<description>
+# Returns empty if no work. story_file/test_file/test_command extracted from
+# issue notes (vibe-loop Phase 8 writes them as
+# `story_file=<p> | test_file=<p> | test_command=<full cmd>`).
 get_next_issue() {
   local label_arg=""
   if [[ -n "$LABEL_FILTER" ]]; then
@@ -75,16 +76,19 @@ if not data:
     sys.exit(1)
 i = data[0]
 notes = i.get('notes', '') or ''
-# Vibe-loop notes shape: 'story_file=<path> | test_file=<path>'
 sf = ''
 tf = ''
+tc = ''
 m = re.search(r'story_file=([^\s|]+)', notes)
 if m: sf = m.group(1)
 m = re.search(r'test_file=([^\s|]+)', notes)
 if m: tf = m.group(1)
+# test_command can contain spaces — match up to '|' or end of string
+m = re.search(r'test_command=([^|]+?)(?:\s*\||\s*\$)', notes + '|')
+if m: tc = m.group(1).strip()
 def clean(s):
     return (s or '').replace('\t', ' ').replace('\n', ' ').strip()
-print(f\"{i.get('id','')}\t{clean(i.get('title',''))}\t{i.get('priority','')}\t{sf}\t{tf}\t{clean(i.get('description',''))}\")
+print(f\"{i.get('id','')}\t{clean(i.get('title',''))}\t{i.get('priority','')}\t{sf}\t{tf}\t{clean(tc)}\t{clean(i.get('description',''))}\")
 " 2>/dev/null
 }
 
@@ -99,13 +103,26 @@ while true; do
     break
   fi
 
-  IFS=$'\t' read -r id title priority story_file test_file description <<<"$next"
+  IFS=$'\t' read -r id title priority story_file test_file test_command description <<<"$next"
+
+  # Fallback: derive a test_command if notes didn't carry one. Mixed-runner
+  # repos (jest+vitest both present) confuse the agent; spec it explicitly.
+  if [[ -z "$test_command" && -n "$test_file" ]]; then
+    if [[ -f "package.json" ]] && grep -q '"vitest"' package.json; then
+      test_command="npx vitest run $test_file"
+    elif [[ -f "package.json" ]] && grep -q '"jest"' package.json; then
+      test_command="npx jest --testPathPattern=$test_file"
+    else
+      test_command="npm test -- $test_file"
+    fi
+  fi
 
   echo "" | tee -a "$LOG"
   echo "=================================================================" | tee -a "$LOG"
   echo "=== iter $iter: $id [P$priority] — $title" | tee -a "$LOG"
-  echo "    story_file: ${story_file:-<not set>}" | tee -a "$LOG"
-  echo "    test_file:  ${test_file:-<not set>}" | tee -a "$LOG"
+  echo "    story_file:   ${story_file:-<not set>}" | tee -a "$LOG"
+  echo "    test_file:    ${test_file:-<not set>}" | tee -a "$LOG"
+  echo "    test_command: ${test_command:-<not set>}" | tee -a "$LOG"
   echo "=================================================================" | tee -a "$LOG"
 
   # Read the story spec content (rich planning output from Hermes phases 7a/7b).
@@ -125,15 +142,27 @@ while true; do
   # Claim the issue
   bd update "$id" --claim 2>&1 | tee -a "$LOG"
 
+  # Pre-write prompt.txt with the binding test command. This removes Pi's
+  # runner-choice ambiguity in mixed-runner repos and gives the post-Pi
+  # verification gate a stable contract regardless of whether Pi attests.
+  mkdir -p .hermes/sessions
+  if [[ -n "$test_command" ]]; then
+    echo "Run: $test_command" > ".hermes/sessions/$id.prompt.txt"
+    echo "    Pre-wrote .hermes/sessions/$id.prompt.txt with: Run: $test_command" | tee -a "$LOG"
+  else
+    echo "    WARN: no test_command derived — gate will refuse to close" | tee -a "$LOG"
+  fi
+
   # Build Pi prompt. Pi gets:
   # - The full story spec (from Hermes' planning phase) — explicit file paths
   # - Concrete close protocol (claim → fix → test → commit → close → push)
   # - bd-gate awareness (Pi knows tests will be re-run on close)
-  prompt="You are completing one bd issue end-to-end. The story spec below was written by the planning phase and contains the EXACT file paths to modify and the test command to verify. Use them directly — do NOT guess paths from prose.
+  prompt="You are completing one bd issue end-to-end. The story spec below was written by the planning phase and contains the EXACT file paths to modify. Use them directly — do NOT guess paths from prose.
 
-ISSUE ID:    $id
-TITLE:       $title
-TEST FILE:   ${test_file:-<see story spec>}
+ISSUE ID:     $id
+TITLE:        $title
+TEST FILE:    ${test_file:-<see story spec>}
+TEST COMMAND: ${test_command:-<see story spec>}
 
 ## STORY SPEC (authoritative — file paths, AC, patterns, do-NOTs all come from here):
 $story_content
@@ -144,11 +173,11 @@ The story spec above contains everything: Acceptance Criteria, Tasks, the source
 
 1. Read the test file at: ${test_file:-<extract from story spec 'Test file' line>}. Tests are the contract — DO NOT modify them.
 2. Read the source file(s) listed in the story's 'Key files to modify' section. Implement the fix per the story's Acceptance Criteria.
-3. Run the test command (typically: \`npx vitest <test_file>\` or whatever the project conventions say). Tests MUST pass before close.
-4. Write \`.hermes/sessions/$id.prompt.txt\` with one line: \`Run: <the exact test command you used>\`. bd-gate v0.4 will re-run this command for independent verification on close.
+3. Run **exactly this** command and no other: \`${test_command:-<extract from story spec>}\`. Do NOT pick a different test runner. Do NOT pass extra flags. The build loop will independently re-run this same command on close — they must match.
+4. The build loop has pre-written \`.hermes/sessions/$id.prompt.txt\` with the test command above. You do NOT need to write it.
 5. Stage your code change(s): \`git add <source files>\`. Do NOT stage test files.
 6. \`git commit -m 'fix($id): <brief description>' --no-verify\`. Do NOT use --allow-empty. Do NOT make multiple empty commits.
-7. Re-run the test command against HEAD. If passing, write \`.hermes/sessions/$id.test-result\` with: \`PASS \$(git rev-parse HEAD)\`.
+7. Re-run the same test command against HEAD. If passing, write \`.hermes/sessions/$id.test-result\` with: \`PASS \$(git rev-parse HEAD)\`.
 8. \`bd close $id\`   # NON-SKIPPABLE — DO NOT exit until this command has run successfully.
 9. \`git push\` (or \`git push -u origin <branch>\` if no upstream).
 
