@@ -58,8 +58,14 @@ link "$REPO_DIR/hermes/plugins/numctx-verify"  "$HOME/.hermes/plugins/numctx-ver
 echo
 
 echo "Scripts (symlinked to ~/.local/bin so they're on PATH):"
-link "$REPO_DIR/scripts/pi-build-loop.sh" "$HOME/.local/bin/pi-build-loop.sh"
+link "$REPO_DIR/scripts/pi-build-loop.sh"          "$HOME/.local/bin/pi-build-loop.sh"
+link "$REPO_DIR/scripts/vibe-plan-then-build.sh"   "$HOME/.local/bin/vibe-plan-then-build.sh"
 echo
+
+echo "Note: launcher .desktop files at ~/.local/share/applications/ (manual install):"
+echo "  hermes-plan-then-build.desktop  — chained plan → build pipeline"
+echo "  hermes-pi-build-loop.desktop    — build only (drain bd queue)"
+echo "  (existing) hermes-vibe-loop.desktop, hermes-vibe-loop-yolo.desktop, hermes-chat.desktop"
 
 echo "Done. Verify with:"
 echo "  hermes plugins list | grep -E 'bd-gate|numctx-verify'"
