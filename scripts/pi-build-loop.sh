@@ -135,21 +135,22 @@ ISSUE ID:    $id
 TITLE:       $title
 TEST FILE:   ${test_file:-<see story spec>}
 
-## STORY SPEC (authoritative — use file paths from this, not from the title):
+## STORY SPEC (authoritative — file paths, AC, patterns, do-NOTs all come from here):
 $story_content
 
 ## YOUR WORKFLOW
 
-1. Read AGENTS.md for project conventions.
-2. Read the test file at: ${test_file:-<extract from story spec 'Test file' line>}. Tests are the contract — DO NOT modify them.
-3. Read the source file(s) listed in the story's 'Key files to modify' section. Implement the fix per the story's Acceptance Criteria.
-4. Run the test command (typically: \`npx vitest <test_file>\` or whatever the project conventions say). Tests MUST pass before close.
-5. Write \`.hermes/sessions/$id.prompt.txt\` with one line: \`Run: <the exact test command you used>\`. bd-gate v0.4 will re-run this command for independent verification on close.
-6. Stage your code change(s): \`git add <source files>\`. Do NOT stage test files.
-7. \`git commit -m 'fix($id): <brief description>' --no-verify\`. Do NOT use --allow-empty. Do NOT make multiple empty commits.
-8. Re-run the test command against HEAD. If passing, write \`.hermes/sessions/$id.test-result\` with: \`PASS \$(git rev-parse HEAD)\`.
-9. \`bd close $id\`
-10. \`git push\` (or \`git push -u origin <branch>\` if no upstream).
+The story spec above contains everything: Acceptance Criteria, Tasks, the source file path, the test file path, Coding Rules (Patterns to Follow, Reuse These, Do NOT). Do NOT read AGENTS.md or other project-context docs unless the story spec explicitly tells you to — context is finite and the spec is self-contained.
+
+1. Read the test file at: ${test_file:-<extract from story spec 'Test file' line>}. Tests are the contract — DO NOT modify them.
+2. Read the source file(s) listed in the story's 'Key files to modify' section. Implement the fix per the story's Acceptance Criteria.
+3. Run the test command (typically: \`npx vitest <test_file>\` or whatever the project conventions say). Tests MUST pass before close.
+4. Write \`.hermes/sessions/$id.prompt.txt\` with one line: \`Run: <the exact test command you used>\`. bd-gate v0.4 will re-run this command for independent verification on close.
+5. Stage your code change(s): \`git add <source files>\`. Do NOT stage test files.
+6. \`git commit -m 'fix($id): <brief description>' --no-verify\`. Do NOT use --allow-empty. Do NOT make multiple empty commits.
+7. Re-run the test command against HEAD. If passing, write \`.hermes/sessions/$id.test-result\` with: \`PASS \$(git rev-parse HEAD)\`.
+8. \`bd close $id\`   # NON-SKIPPABLE — DO NOT exit until this command has run successfully.
+9. \`git push\` (or \`git push -u origin <branch>\` if no upstream).
 
 ## HARD RULES
 
@@ -159,6 +160,7 @@ $story_content
 - NEVER use \`git commit --allow-empty\`.
 - NEVER write a PASS \`.test-result\` without actually running and passing the tests.
 - NEVER write 'No tests required' as a way to skip step 4 — every coding issue requires tests.
+- NEVER exit the session before running \`bd close $id\` (step 8). The build loop treats a skipped close as a failure even when tests pass — your work will look incomplete.
 - If you can't make tests pass after 3 different approaches, escalate by spawning the reasoning model:
     pi --print --no-tools --provider ollama-quinn --model deepseek-r1:32b 'reasoning prompt with full context'
 
@@ -186,6 +188,38 @@ except Exception:
     print('unknown')
 ")
   echo "Post-Pi: $id status=$status" | tee -a "$LOG"
+
+  # Independent verification — replicates bd-gate v0.4 at the loop level since
+  # bd-gate (a Hermes pre_tool_call hook) doesn't fire on Pi-side closes.
+  test_cmd_file=".hermes/sessions/$id.prompt.txt"
+  verified=false
+  if [[ -f "$test_cmd_file" ]]; then
+    test_cmd=$(grep -m1 '^Run:' "$test_cmd_file" | sed 's/^Run:[[:space:]]*//')
+    if [[ -n "$test_cmd" ]]; then
+      echo "Re-running test for independent verification: $test_cmd" | tee -a "$LOG"
+      if bash -c "$test_cmd" >> "$LOG" 2>&1; then
+        echo "Independent test verification: PASS" | tee -a "$LOG"
+        verified=true
+      else
+        echo "Independent test verification: FAIL — refusing to close" | tee -a "$LOG"
+      fi
+    else
+      echo "WARN: $test_cmd_file has no 'Run:' line" | tee -a "$LOG"
+    fi
+  else
+    echo "WARN: $test_cmd_file missing — Pi skipped attest step 4" | tee -a "$LOG"
+  fi
+
+  if [[ "$verified" == "true" && "$status" != "closed" ]]; then
+    head_msg=$(git log -1 --pretty=%B 2>/dev/null)
+    if echo "$head_msg" | grep -q "fix($id):"; then
+      echo "Pi forgot 'bd close' but verification passed. Closing on Pi's behalf." | tee -a "$LOG"
+      bd close "$id" 2>&1 | tee -a "$LOG"
+      status="closed"
+    else
+      echo "WARN: verified but HEAD is not 'fix($id):' — refusing to auto-close" | tee -a "$LOG"
+    fi
+  fi
 
   if [[ "$status" != "closed" ]]; then
     echo "WARN: $id did not close. Moving on (no retry — baseline mode)." | tee -a "$LOG"
