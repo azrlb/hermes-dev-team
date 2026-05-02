@@ -90,6 +90,26 @@ for dep in node_modules vendor .venv; do
   fi
 done
 
+# 2c. WARN about bd state leakage. We CANNOT cleanly isolate bd state
+#     in a worktree-based sandbox: bd auto-discovers its database via
+#     the git root, and `git worktree` shares the git root (and thus
+#     the running Dolt server reference) with the source repo. Even if
+#     we rm -rf .beads/ in the sandbox, `bd init` detects the source
+#     repo's Dolt server and refuses to init (or, with --reinit-local,
+#     would destroy the source's data). Discovered 2026-05-01 during
+#     three-tier-quinn work — prior sandbox runs leaked their issues
+#     into the main Crispi-app beads DB.
+#
+#     Pragmatic mitigation: fixtures must use a unique label per run
+#     so issues are easy to find + clean up afterwards. The wrapper
+#     surfaces the leakage so it isn't silent.
+if [[ -f "$SOURCE_REPO/.beads/metadata.json" ]] && \
+   grep -q '"dolt_mode": "server"' "$SOURCE_REPO/.beads/metadata.json" 2>/dev/null; then
+  echo "[sandbox] WARN: source repo uses bd in dolt-server mode; sandbox bd writes will land"
+  echo "[sandbox]       in the source project's database. Fixtures should use a unique"
+  echo "[sandbox]       label and clean up afterwards. Cannot isolate via worktree."
+fi
+
 # 3. Run the test-fixture script, if provided, inside the sandbox
 if [[ -n "$SETUP_HOOK" ]]; then
   if [[ ! -f "$SETUP_HOOK" ]]; then

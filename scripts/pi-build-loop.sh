@@ -87,8 +87,12 @@ if m: tf = m.group(1)
 m = re.search(r'test_command=([^|]+?)(?:\s*\||\s*\$)', notes + '|')
 if m: tc = m.group(1).strip()
 def clean(s):
-    return (s or '').replace('\t', ' ').replace('\n', ' ').strip()
-print(f\"{i.get('id','')}\t{clean(i.get('title',''))}\t{i.get('priority','')}\t{sf}\t{tf}\t{clean(tc)}\t{clean(i.get('description',''))}\")
+    return (s or '').replace('\t', ' ').replace('\n', ' ').replace('\x01', ' ').strip()
+# Use \x01 as separator instead of \t. Bash IFS=\$'\t' collapses consecutive
+# empty tab-separated fields because tab is whitespace; \x01 is non-whitespace
+# so empty fields survive parsing. Discovered 2026-05-01 during three-tier
+# auth-security run when notes had only test_command (no story_file/test_file).
+print(f\"{i.get('id','')}\x01{clean(i.get('title',''))}\x01{i.get('priority','')}\x01{sf}\x01{tf}\x01{clean(tc)}\x01{clean(i.get('description',''))}\")
 " 2>/dev/null
 }
 
@@ -103,7 +107,7 @@ while true; do
     break
   fi
 
-  IFS=$'\t' read -r id title priority story_file test_file test_command description <<<"$next"
+  IFS=$'\x01' read -r id title priority story_file test_file test_command description <<<"$next"
 
   # Fallback: derive a test_command if notes didn't carry one. Mixed-runner
   # repos (jest+vitest both present) confuse the agent; spec it explicitly.
@@ -177,6 +181,22 @@ The story spec above contains everything: Acceptance Criteria, Tasks, the source
 4. The build loop has pre-written \`.hermes/sessions/$id.prompt.txt\` with the test command above. You do NOT need to write it.
 5. Stage your code change(s): \`git add <source files>\`. Do NOT stage test files.
 6. \`git commit -m 'fix($id): <brief description>' --no-verify\`. Do NOT use --allow-empty. Do NOT make multiple empty commits.
+6a. Run Quinn adversarial review against your diff. Run this single command in bash (the \$(...) embeds the diff inline so it must be one shell invocation, not split across calls):
+
+    pi --print --no-tools --provider ollama-quinn --model deepseek-r1:32b \"You are reviewing whether my commit actually addresses bd issue $id.
+
+ISSUE TITLE: $title
+ISSUE GOAL: ${description:0:600}
+
+Decide if my diff (a) actually addresses the issue's goal in relevant source files, AND (b) is correct (no security bugs, missed edge cases, incorrect logic, weak validation). If the diff only modifies log files, session state, .beads/, .hermes/, dist/, or build artifacts — that is NOT a fix. APPROVED on first line only if both (a) and (b) hold; otherwise REQUEST_CHANGES on first line and explain.
+
+\$(git show HEAD --stat -p)
+
+End of diff. Begin review.\"
+
+    Read Quinn's response. If the first line is APPROVED (or LGTM), proceed to step 7. If Quinn raises specific issues, address them: modify source, re-run tests, add a follow-up commit, then re-invoke Quinn. Do NOT skip this step. The build loop will re-run Quinn independently at the end and refuse to auto-close if Quinn rejects.
+
+CRITICAL: Quinn-side and gate-side both REJECT diffs that don't change source files. If you can't make a real source-code fix because the bug already appears fixed, do NOT commit anything — let the iter time out. Closing an issue with a metadata-only commit will fail the gate.
 7. Re-run the same test command against HEAD. If passing, write \`.hermes/sessions/$id.test-result\` with: \`PASS \$(git rev-parse HEAD)\`.
 8. \`bd close $id\`   # NON-SKIPPABLE — DO NOT exit until this command has run successfully.
 9. \`git push\` (or \`git push -u origin <branch>\` if no upstream).
@@ -239,10 +259,73 @@ except Exception:
     echo "WARN: $test_cmd_file missing — Pi skipped attest step 4" | tee -a "$LOG"
   fi
 
-  if [[ "$verified" == "true" && "$status" != "closed" ]]; then
+  # Independent Quinn adversarial review at HEAD. Parallels the test
+  # verification above. Auto-close requires BOTH test PASS and Quinn APPROVED.
+  # Skipped when tests already failed since auto-close won't fire anyway.
+  # Pre-check: does the diff touch source files at all? If the only changes
+  # are in generated/log/state directories (.beads/, .hermes/, dist/, build/,
+  # node_modules/, *.log, *.jsonl) the commit is not a real fix — Pi may have
+  # gamed the loop by committing session state with the right prefix.
+  quinn_ok=false
+  source_changed=false
+  if [[ "$verified" == "true" ]]; then
+    head_sha=$(git log -1 --pretty=%H 2>/dev/null)
+    if [[ -n "$head_sha" ]]; then
+      changed_files=$(git show --pretty=format: --name-only HEAD 2>/dev/null | grep -v '^$' || true)
+      while IFS= read -r f; do
+        [[ -z "$f" ]] && continue
+        case "$f" in
+          .beads/*|.hermes/*|dist/*|build/*|node_modules/*|*.log|*.jsonl) ;;
+          */dist/*|*/build/*|*/node_modules/*) ;;
+          *) source_changed=true ;;
+        esac
+      done <<< "$changed_files"
+
+      if [[ "$source_changed" != "true" ]]; then
+        echo "Quinn pre-check: NO_SOURCE_CHANGE — diff only modifies generated/log files, refusing to auto-close" | tee -a "$LOG"
+        echo "Changed files:" | tee -a "$LOG"
+        echo "$changed_files" | tee -a "$LOG"
+      else
+        quinn_diff=$(git show HEAD --stat -p 2>/dev/null || true)
+        echo "Running independent Quinn adversarial review at HEAD ($head_sha)" | tee -a "$LOG"
+        quinn_verdict=$(timeout 300 pi --print --no-tools \
+          --provider ollama-quinn --model deepseek-r1:32b \
+          "You are reviewing whether a commit actually addresses a specific bd issue.
+
+ISSUE ID:    $id
+ISSUE TITLE: $title
+ISSUE GOAL:  ${description:0:600}
+
+Decide if this diff (a) actually addresses the issue's goal in the relevant source files, AND (b) is correct (no security bugs, missed edge cases, incorrect logic, weak validation).
+
+If the diff is on-topic AND correct: APPROVED on the first line.
+If the diff is off-topic (modifies unrelated files, fixes a different bug, or just adds metadata): REQUEST_CHANGES on the first line, then explain why.
+If the diff has security/correctness issues: REQUEST_CHANGES on the first line, then list them with file:line references.
+
+$quinn_diff
+
+End of diff. Begin review." 2>&1)
+        if echo "$quinn_verdict" | head -1 | grep -qE '^[[:space:]]*(APPROVED|LGTM)\b'; then
+          echo "Independent Quinn verification: APPROVED" | tee -a "$LOG"
+          quinn_ok=true
+        else
+          echo "Independent Quinn verification: REQUEST_CHANGES — refusing to auto-close" | tee -a "$LOG"
+          echo "--- Quinn verdict ---" | tee -a "$LOG"
+          echo "$quinn_verdict" | tee -a "$LOG"
+          echo "--- end Quinn verdict ---" | tee -a "$LOG"
+        fi
+      fi
+    else
+      echo "Quinn review skipped: no HEAD commit" | tee -a "$LOG"
+    fi
+  else
+    echo "Quinn review skipped: tests did not pass" | tee -a "$LOG"
+  fi
+
+  if [[ "$verified" == "true" && "$quinn_ok" == "true" && "$status" != "closed" ]]; then
     head_msg=$(git log -1 --pretty=%B 2>/dev/null)
     if echo "$head_msg" | grep -q "fix($id):"; then
-      echo "Pi forgot 'bd close' but verification passed. Closing on Pi's behalf." | tee -a "$LOG"
+      echo "Pi forgot 'bd close' but verification + Quinn passed. Closing on Pi's behalf." | tee -a "$LOG"
       bd close "$id" 2>&1 | tee -a "$LOG"
       status="closed"
     else
