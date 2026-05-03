@@ -226,6 +226,44 @@ Begin."
   exit_code=$?
   echo "Pi exit: $exit_code (124=timeout)" | tee -a "$LOG"
 
+  # r12 Bug #1 fix: pi --print exits when devstral emits a text-only "Now let me X:"
+  # narration turn (no tool call). Re-invoke pi up to N times with a "continue"
+  # nudge until the last assistant turn has a tool call OR the issue closes.
+  session_jsonl=".hermes/sessions/$id.jsonl"
+  re_invoke_max=5
+  re_invoke_n=0
+  while [[ "$exit_code" == "0" && $re_invoke_n -lt $re_invoke_max && -f "$session_jsonl" ]]; do
+    bd_status=$(bd show "$id" --json 2>/dev/null | python3 -c "
+import json, sys
+try:
+    d = json.load(sys.stdin)
+    i = d[0] if isinstance(d, list) else d
+    print(i.get('status', 'unknown'))
+except Exception:
+    print('unknown')
+" 2>/dev/null)
+    if [[ "$bd_status" == "closed" ]]; then break; fi
+
+    last_assistant=$(grep '"role":"assistant"' "$session_jsonl" 2>/dev/null | tail -n1)
+    if [[ -z "$last_assistant" ]]; then break; fi
+    tool_call_count=$(echo "$last_assistant" | jq '[.message.content[]? | select(.type=="toolCall")] | length' 2>/dev/null)
+    if [[ -z "$tool_call_count" || "$tool_call_count" != "0" ]]; then break; fi
+
+    re_invoke_n=$((re_invoke_n + 1))
+    echo "[re-invoke $re_invoke_n/$re_invoke_max] Pi exited on text-only turn; nudging continue" | tee -a "$LOG"
+    timeout "$ITER_CAP_SEC" pi --print \
+      --provider ollama --model devstral-small-2:24b \
+      --session "$session_jsonl" \
+      --append-system-prompt "$HOME/.pi/agents/tdd-coder.md" \
+      "Your previous turn was narration only (no tool call) so the runtime exited. Continue the workflow now: emit your next tool call directly, no preamble. If your code change is already complete and tests pass, run step 6a (Quinn review), then step 7 (write .test-result), then step 8 (bd close $id)." \
+      >> "$LOG" 2>&1
+    exit_code=$?
+    echo "Pi re-invoke exit: $exit_code (124=timeout)" | tee -a "$LOG"
+  done
+  if [[ $re_invoke_n -ge $re_invoke_max ]]; then
+    echo "[re-invoke] hit cap of $re_invoke_max — stopping nudges" | tee -a "$LOG"
+  fi
+
   # Status check
   status=$(bd show "$id" --json 2>/dev/null | python3 -c "
 import json, sys
@@ -257,6 +295,40 @@ except Exception:
     fi
   else
     echo "WARN: $test_cmd_file missing — Pi skipped attest step 4" | tee -a "$LOG"
+  fi
+
+  # r14 escalator: when the wrapper re-invoke loop didn't get tests green,
+  # walk the work-loop SKILL.md Step 8 chain (different approach × 2 → web
+  # search → re-prompt with research → Advisor at deepseek-r1:32b → failure
+  # classifier) plus Step 9b Deep Research on HARD_PROBLEM. Local-only.
+  # Skipped if tests are already passing (verified=true). See plan at
+  # /home/bob/.claude/plans/lucky-bouncing-star.md.
+  if [[ "$verified" != "true" && -n "$test_cmd" && -x /home/bob/ai-rig/scripts/escalator.py ]]; then
+    baseline_passed=$(grep -oP 'Tests\s+\d+ passed' "$LOG" | tail -1 | grep -oP '\d+' || echo 0)
+    echo "" | tee -a "$LOG"
+    echo "===== escalator: invoking work-loop chain (baseline_passed=${baseline_passed:-0}) =====" | tee -a "$LOG"
+    escalator_out=$(python3 /home/bob/ai-rig/scripts/escalator.py \
+      --session ".hermes/sessions/$id.jsonl" \
+      --issue-id "$id" \
+      --issue-title "$title" \
+      --issue-desc "${description:0:1500}" \
+      --repo "$REPO" \
+      --test-command "$test_cmd" \
+      --baseline-test-count "${baseline_passed:-0}" \
+      --phase 1 2>&1 | tee -a "$LOG" | tail -1)
+    escalator_result=$(echo "$escalator_out" | python3 -c "import json,sys
+try: print(json.loads(sys.stdin.read()).get('result','UNKNOWN'))
+except Exception: print('UNKNOWN')" 2>/dev/null)
+    echo "===== escalator result: $escalator_result =====" | tee -a "$LOG"
+    if [[ "$escalator_result" == "PASS" ]]; then
+      echo "Escalator landed a fix; re-verifying" | tee -a "$LOG"
+      if bash -c "$test_cmd" >> "$LOG" 2>&1; then
+        echo "Post-escalator test verification: PASS" | tee -a "$LOG"
+        verified=true
+      else
+        echo "Post-escalator test verification: FAIL (escalator JSON said PASS but re-run disagrees)" | tee -a "$LOG"
+      fi
+    fi
   fi
 
   # Independent Quinn adversarial review at HEAD. Parallels the test
@@ -335,6 +407,16 @@ End of diff. Begin review." 2>&1)
 
   if [[ "$status" != "closed" ]]; then
     echo "WARN: $id did not close. Moving on (no retry — baseline mode)." | tee -a "$LOG"
+  fi
+
+  # Bug #3 fix (r12 post-mortem): clean uncommitted source mods between iters.
+  # Without this, prior iters' broken edits (e.g., r12 iter 2's syntax-broken
+  # rls.test.ts) contaminate subsequent iters' gate test runs. `git checkout
+  # -- packages/` only affects working tree relative to HEAD; committed work
+  # (Pi's good commits) stays. Untracked files (.hermes/, .beads/) untouched.
+  if [[ -d packages ]]; then
+    echo "Bug #3 cleanup: discarding uncommitted source mods in packages/" | tee -a "$LOG"
+    git checkout -- packages/ 2>&1 | tee -a "$LOG" || true
   fi
 done
 

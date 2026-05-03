@@ -14,8 +14,8 @@
           "id": "devstral-small-2:24b",
           "name": "Devstral Small 2 24B (Hands T3 - A4000, native tool calls)",
           "reasoning": false,
-          "contextWindow": 32768,
-          "maxTokens": 4096
+          "contextWindow": 49152,
+          "maxTokens": 8192
         },
         {
           "id": "qwen2.5-coder:14b",
