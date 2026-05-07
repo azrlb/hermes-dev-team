@@ -33,11 +33,12 @@ WORKSPACE="${HERMES_KANBAN_WORKSPACE:-}"
 DEV_SKILL=""
 for arg in "$@"; do
   case "$arg" in
-    dev-team/stack-detect)   DEV_SKILL=stack-detect;   break ;;
-    dev-team/health-fix)     DEV_SKILL=health-fix;     break ;;
-    dev-team/pi-dispatcher)  DEV_SKILL=pi-dispatcher;  break ;;
-    dev-team/cross-check)    DEV_SKILL=cross-check;    break ;;
-    dev-team/land-the-plane) DEV_SKILL=land-the-plane; break ;;
+    dev-team/stack-detect)        DEV_SKILL=stack-detect;        break ;;
+    dev-team/health-fix)          DEV_SKILL=health-fix;          break ;;
+    dev-team/pi-dispatcher)       DEV_SKILL=pi-dispatcher;       break ;;
+    dev-team/cross-check)         DEV_SKILL=cross-check;         break ;;
+    dev-team/land-the-plane)      DEV_SKILL=land-the-plane;      break ;;
+    dev-team/deep-research-bridge) DEV_SKILL=deep-research-bridge; break ;;
   esac
 done
 
@@ -72,6 +73,27 @@ case "$DEV_SKILL" in
     ;;
 
   pi-dispatcher)
+    # Slice 2 fail-then-succeed mode: HERMES_SHIM_FAIL_FIRST=N means block
+    # the first N spawns of this task. We count BLOCKED events on this task
+    # (not the runs list — that includes the currently-open run, off-by-one).
+    # Default 0 = always succeed (Slice 1 behavior).
+    FAIL_FIRST="${HERMES_SHIM_FAIL_FIRST:-0}"
+    BLOCK_COUNT=$("$REAL_HERMES" kanban show "$TASK_ID" --json 2>/dev/null \
+      | python3 -c "
+import json, sys
+try:
+    d = json.load(sys.stdin)
+    print(sum(1 for e in d.get('events', []) if e.get('kind') == 'blocked'))
+except: print(0)
+" 2>/dev/null || echo 0)
+    if [[ "$BLOCK_COUNT" -lt "$FAIL_FIRST" ]]; then
+      # Block — let the reactive watcher decide the next strategy.
+      ATTEMPT=$((BLOCK_COUNT + 1))
+      "$REAL_HERMES" kanban block "$TASK_ID" \
+        "pi-dispatcher (shim): tests still failing on attempt $ATTEMPT — escalate"
+      exit 0
+    fi
+
     # Invoke bin/pi shim (which writes src/add.ts and emits a pi-shim.log line —
     # that's what assertion 8 checks for).
     if [[ -x "$WORKTREE/bin/pi" ]]; then
@@ -80,9 +102,19 @@ case "$DEV_SKILL" in
       (pi 2>&1 || true) | tail -5
     fi
     HEAD_SHA=$(git -C "$WORKTREE" rev-parse HEAD 2>/dev/null || echo "")
+    SUCCESS_ATTEMPT=$((BLOCK_COUNT + 1))
     "$REAL_HERMES" kanban complete "$TASK_ID" \
-      --summary "pi-dispatcher (shim): wrote src/add.ts via Pi" \
-      --metadata "{\"head_sha\":\"$HEAD_SHA\",\"bd_id\":\"$BD_ID\",\"test_file\":\"$TEST_FILE\"}"
+      --summary "pi-dispatcher (shim): wrote src/add.ts via Pi (attempt $SUCCESS_ATTEMPT)" \
+      --metadata "{\"head_sha\":\"$HEAD_SHA\",\"bd_id\":\"$BD_ID\",\"test_file\":\"$TEST_FILE\",\"attempt\":$SUCCESS_ATTEMPT}"
+    ;;
+
+  deep-research-bridge)
+    # Slice 2 escalation strategy: wraps scripts/escalator.py in production.
+    # For the test fixture, emit canned research findings so we don't actually
+    # run the multi-tier chain (which would call real LLMs).
+    "$REAL_HERMES" kanban complete "$TASK_ID" \
+      --summary "deep-research-bridge (shim): canned findings — root cause is X, suggest approach Y" \
+      --metadata "{\"bd_id\":\"$BD_ID\",\"phase_reached\":6,\"result\":\"PASS\",\"approaches_tried\":[\"different-prompt\",\"web-research\",\"deepseek-r1\"],\"next_nudge\":\"apply approach Y on the next attempt\"}"
     ;;
 
   cross-check)
