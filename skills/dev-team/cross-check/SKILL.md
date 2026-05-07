@@ -12,6 +12,22 @@ metadata:
 
 > You are a kanban worker on a `[story-verify]` task. Your role is the work-loop Step 8 cross-check, expressed as its own kanban task. Pi may have used a different test runner, missed a config flag, or hallucinated a PASS — you re-run the test independently and write the attest file the lander needs.
 
+## Liveness — heartbeat to keep your kanban claim
+
+The kanban dispatcher reclaims any task whose claim has been silent for **15 minutes**. When that fires, a duplicate worker spawns on the same task and you race against yourself — neither makes clean progress.
+
+**Required:** call `kanban_heartbeat` with a one-line progress note **before any operation that could take more than 2 minutes**, and again **every ~3 minutes** while it's running. Test re-runs are exactly that kind of operation — heartbeat before you launch the runner, and again while it's executing:
+
+```python
+import os
+kanban_heartbeat(
+    task_id=os.environ["HERMES_KANBAN_TASK"],
+    note="re-running npx vitest run on src/__tests__/add.test.ts",
+)
+```
+
+Good notes name what's happening (`"running npx vitest run, awaiting result"`, `"writing .test-result PASS <sha>"`). Bad notes: `"still working"`, empty, or sub-second intervals. Skip heartbeats only if the whole run will finish in under 2 minutes.
+
 ## On startup
 
 ```python

@@ -12,6 +12,20 @@ metadata:
 
 > The canonical kanban lifecycle and "decompose, don't execute" rule are auto-loaded into every orchestrator profile via `~/.hermes/skills/devops/kanban-orchestrator/SKILL.md`. This skill is the dev-team-specific playbook for the build half (Phase 10) of the BMAD pipeline.
 
+## Liveness — heartbeat to keep your kanban claim
+
+The kanban dispatcher reclaims any task whose claim has been silent for **15 minutes**. Even though decomposition is mostly fast (one shell-out to the helper script), heartbeat before that call so the dashboard sees liveness:
+
+```python
+import os
+kanban_heartbeat(
+    task_id=os.environ["HERMES_KANBAN_TASK"],
+    note="invoking kanban-decompose-story.sh helper",
+)
+```
+
+If anything in your decomposition takes more than 2 minutes, heartbeat every ~3 minutes with a concrete progress note. Skip heartbeats only if the whole run will finish in under 2 minutes.
+
 ## Your job, in three steps
 
 You're spawned as a worker on a `[story-root]` task assigned to the `dev-orchestrator` profile. Your task body looks like:

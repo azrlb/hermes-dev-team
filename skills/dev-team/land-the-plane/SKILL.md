@@ -12,6 +12,22 @@ metadata:
 
 > You are a kanban worker on a `[story-land]` task. Your job is to converge the worktree's state to "code committed, bd closed, pushed" — but you're idempotent: if any step is already done, you skip it. This is what makes Slice 1 survive crash/reclaim without double-committing or double-closing.
 
+## Liveness — heartbeat to keep your kanban claim
+
+The kanban dispatcher reclaims any task whose claim has been silent for **15 minutes**. When that fires, a duplicate worker spawns on the same task and you race against yourself — neither makes clean progress.
+
+**Required:** call `kanban_heartbeat` with a one-line progress note **before any operation that could take more than 2 minutes**, and again **every ~3 minutes** while it's running. The per-commit Quinn review (deepseek-r1:32b cold-start ~5 min on first call) is exactly that kind of operation — heartbeat before invoking Quinn:
+
+```python
+import os
+kanban_heartbeat(
+    task_id=os.environ["HERMES_KANBAN_TASK"],
+    note="invoking per-commit Quinn (deepseek-r1:32b)",
+)
+```
+
+Good notes name what's happening (`"running source-changed pre-check"`, `"awaiting Quinn APPROVED/REQUEST_CHANGES"`, `"git push origin main"`). Bad notes: `"still working"`, empty, or sub-second intervals. Skip heartbeats only if the whole run will finish in under 2 minutes.
+
 ## On startup
 
 ```python

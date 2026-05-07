@@ -58,6 +58,7 @@ STACK_DETECT_ID=$(hermes kanban create "stack-detect for ${EPIC_SLUG}" \
   --assignee hermes-detector \
   --tenant "$T" \
   --workspace "$WS" \
+  --max-runtime 90m \
   --skill dev-team/stack-detect \
   --body "Run dev-team/stack-detect against ${WORKTREE}. Read package.json + config files. Emit metadata.test_single_cmd, metadata.test_cmd, metadata.build_cmd, metadata.lint_cmd, metadata.tsc_cmd on completion so children can read them." \
   --json | python3 -c "import json,sys; print(json.load(sys.stdin)['id'])")
@@ -67,6 +68,7 @@ HEALTH_CHECK_ID=$(hermes kanban create "health-check for ${EPIC_SLUG}" \
   --assignee hermes-health-check \
   --tenant "$T" \
   --workspace "$WS" \
+  --max-runtime 90m \
   --skill dev-team/health-fix \
   --body "Run dev-team/health-fix on ${WORKTREE} in scope=blocking-only mode. Complete with metadata.outcome=PASS|PARTIAL|FAIL." \
   --json | python3 -c "import json,sys; print(json.load(sys.stdin)['id'])")
@@ -79,6 +81,7 @@ STORY_IMPL_ID=$(hermes kanban create "impl story ${BD_ID}" \
   --assignee pi-coder \
   --tenant "$T" \
   --workspace "$WS" \
+  --max-runtime 90m \
   --skill dev-team/pi-dispatcher \
   --parent "$STACK_DETECT_ID" \
   --parent "$HEALTH_CHECK_ID" \
@@ -98,6 +101,7 @@ STORY_VERIFY_ID=$(hermes kanban create "verify story ${BD_ID}" \
   --assignee hermes-verifier \
   --tenant "$T" \
   --workspace "$WS" \
+  --max-runtime 90m \
   --skill dev-team/cross-check \
   --parent "$STORY_IMPL_ID" \
   --body "Re-run the story's test file independently of Pi's claim.
@@ -115,6 +119,7 @@ STORY_LAND_ID=$(hermes kanban create "land story ${BD_ID}" \
   --assignee hermes-lander \
   --tenant "$T" \
   --workspace "$WS" \
+  --max-runtime 90m \
   --skill dev-team/land-the-plane \
   --parent "$STORY_VERIFY_ID" \
   --body "Convergent landing for story ${BD_ID}.

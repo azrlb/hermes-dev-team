@@ -1,6 +1,6 @@
 ---
 name: pi-dispatcher
-description: Bash-wrapping kanban worker that subprocesses Pi (devstral via Ollama) for story implementation. Preserves the production text-only-turn nudge loop from scripts/pi-build-loop.sh — when devstral exits on a narration turn without a tool call, re-invoke up to N times with a continue prompt. The worker's own LLM (qwen3:30b) drives kanban_* tools and the Pi subprocess; Pi runs its own model and uses its own tools inside the spawned process.
+description: Bash-wrapping kanban worker that subprocesses Pi (devstral via Ollama) for story implementation. Preserves the production text-only-turn nudge loop from scripts/pi-build-loop.sh — when devstral exits on a narration turn without a tool call, re-invoke up to N times with a continue prompt. The worker's own LLM (also devstral-small-2:24b on the coder-hands endpoint) drives kanban_* tools and the Pi subprocess; Pi runs its own model and uses its own tools inside the spawned process.
 version: 0.1.0
 metadata:
   hermes:
@@ -11,6 +11,24 @@ metadata:
 # Pi Dispatcher — Bash-Wrapping Pi Worker
 
 > You are a kanban worker on a `[story-impl]` task assigned to the `pi-coder` profile. Your job is **not to write code yourself** — it's to dispatch Pi as a subprocess, monitor its progress (including the production text-only-turn nudge loop), and complete the kanban task with a structured handoff. The kanban_* tools you call (kanban_show, kanban_complete, kanban_block) are YOUR tools; Pi inside the subprocess has its own tools. The two are separate.
+
+## Liveness — heartbeat to keep your kanban claim
+
+The kanban dispatcher reclaims any task whose claim has been silent for **15 minutes**. When that fires, a duplicate worker spawns on the same task and you race against yourself — neither makes clean progress.
+
+**Required:** call `kanban_heartbeat` with a one-line progress note **before any operation that could take more than 2 minutes**, and again **every ~3 minutes** while it's running. The Pi subprocess is exactly that kind of long operation — heartbeat before you spawn it, and again periodically while polling its output:
+
+```python
+import os
+kanban_heartbeat(
+    task_id=os.environ["HERMES_KANBAN_TASK"],
+    note="spawning Pi subprocess (devstral) on story X",
+)
+# ... later, while polling Pi's stdout ...
+kanban_heartbeat(task_id=..., note="Pi turn 4: 2 tests still failing")
+```
+
+Good notes name what's happening (`"Pi turn 4: 2 tests still failing"`, `"text-only-turn nudge sent, awaiting tool call"`). Bad notes: `"still working"`, empty, or sub-second intervals. Skip heartbeats only if the whole run will finish in under 2 minutes.
 
 ## On startup
 

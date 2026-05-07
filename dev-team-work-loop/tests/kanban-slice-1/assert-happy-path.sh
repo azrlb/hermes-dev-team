@@ -107,7 +107,7 @@ try:
     d = json.loads(sys.stdin.read())
     for t in (d if isinstance(d, list) else []):
         if 'land story' in t.get('title', '').lower():
-            print(t.get('task_id', '')); break
+            print(t.get('id', '')); break
 except Exception:
     pass
 " 2>/dev/null)
