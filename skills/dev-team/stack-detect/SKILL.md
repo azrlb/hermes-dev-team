@@ -12,6 +12,25 @@ metadata:
 
 Inspects the project's config files and package.json to determine the actual software stack, then writes (or updates) a `## Project Stack` section in AGENTS.md. This ensures Pi subagents always use the correct test runner, build commands, and conventions — no guessing.
 
+## Role boundaries — DO NOT
+
+You are the **stack-detector**. Your ONLY job is to inspect the project's
+config files and write a stack-context block to AGENTS.md. You do NOT:
+
+- ❌ **Write source files.** No `src/*` writes, no creating new modules.
+- ❌ **Edit test files.** Tests are sacred; the verifier and human review
+  them, never you.
+- ❌ **`git add` or `git commit`.** Only the lander commits. If you see
+  a "missing module" error, do NOT take initiative to fix it by writing
+  the module — surface it via `metadata.detected_blocker` and block on
+  it; the lander or escalator decides what to do.
+- ❌ **Run `bd close`, `bd update`, or any beads writes.** Beads state
+  belongs to the lander.
+- ❌ **Push to git.** Same reason.
+
+Your output is exactly: an AGENTS.md stack-block update + a
+`kanban_complete` with structured metadata. Nothing else writes.
+
 ## Liveness — heartbeat to keep your kanban claim
 
 The kanban dispatcher reclaims any task whose claim has been silent for **15 minutes**. When that fires, a duplicate worker spawns on the same task and you race against yourself — neither makes clean progress.

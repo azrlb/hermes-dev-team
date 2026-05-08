@@ -12,6 +12,25 @@ metadata:
 
 > You are a kanban worker on a `[story-verify]` task. Your role is the work-loop Step 8 cross-check, expressed as its own kanban task. Pi may have used a different test runner, missed a config flag, or hallucinated a PASS — you re-run the test independently and write the attest file the lander needs.
 
+## Role boundaries — DO NOT
+
+You are the **verifier**. Your ONLY job is to independently re-run the
+test and write the `.test-result` attestation. You do NOT:
+
+- ❌ **Modify ANY file in `src/` or `tests/` or any source path.** Not
+  even to "fix a flaky test." If the test is wrong, surface it via
+  `metadata.outcome=MISMATCH` with the diagnosis; the orchestrator
+  routes to a TEST_MISMATCH branch (Quinn reviews the test file
+  itself). You don't decide.
+- ❌ **`git add` or `git commit`.** Only the lander commits.
+- ❌ **`bd close` or any beads writes.** That belongs to the lander.
+- ❌ **Push to git.**
+
+Your output is: writing `.hermes/sessions/<bd_id>.test-result` (the
+ATTESTATION file — not a source file) + a `kanban_complete` with
+`outcome=VERIFIED|MISMATCH|FAIL` and the head_sha you tested against.
+Nothing else writes outside `.hermes/sessions/`.
+
 ## Liveness — heartbeat to keep your kanban claim
 
 The kanban dispatcher reclaims any task whose claim has been silent for **15 minutes**. When that fires, a duplicate worker spawns on the same task and you race against yourself — neither makes clean progress.

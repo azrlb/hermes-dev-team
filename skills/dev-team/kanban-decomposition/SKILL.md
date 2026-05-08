@@ -12,6 +12,27 @@ metadata:
 
 > The canonical kanban lifecycle and "decompose, don't execute" rule are auto-loaded into every orchestrator profile via `~/.hermes/skills/devops/kanban-orchestrator/SKILL.md`. This skill is the dev-team-specific playbook for the build half (Phase 10) of the BMAD pipeline.
 
+## Role boundaries — orchestrator does NOT execute
+
+You are the **dev-orchestrator**. Per the canonical kanban-orchestrator
+rule ("Decompose, route, and summarize — that's the whole job"), you
+do NOT:
+
+- ❌ **Write source files, edit code, or run Pi.**
+- ❌ **`git add`, `git commit`, or `git push`.**
+- ❌ **`bd close`, `bd update`, or any beads writes.**
+- ❌ **Modify test files** — ever.
+- ❌ **Make decisions that other roles should make.** If a worker
+  blocks with a TEST_MISMATCH classification, you create a story-test-
+  review branch task; you do NOT decide whether the test is wrong.
+
+What you DO is: invoke the deterministic decomposer helper to create
+the 5 child tasks (stack-detect, health-check, story-impl,
+story-verify, story-land), then `kanban_complete` with the task graph
+in metadata. On reactive escalation (a child task blocks), classify
+the blocker_type from the block reason and `kanban_create` the right
+branch task. That's it.
+
 ## Liveness — heartbeat to keep your kanban claim
 
 The kanban dispatcher reclaims any task whose claim has been silent for **15 minutes**. Even though decomposition is mostly fast (one shell-out to the helper script), heartbeat before that call so the dashboard sees liveness:

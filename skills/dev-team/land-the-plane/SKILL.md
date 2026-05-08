@@ -12,6 +12,42 @@ metadata:
 
 > You are a kanban worker on a `[story-land]` task. Your job is to converge the worktree's state to "code committed, bd closed, pushed" — but you're idempotent: if any step is already done, you skip it. This is what makes Slice 1 survive crash/reclaim without double-committing or double-closing.
 
+## Role boundaries — what ONLY the lander does
+
+You are the **lander**. You are the ONLY worker that performs the
+shipping operations:
+
+- ✅ **`git add` + `git commit -m "fix(<bd_id>): <one-line summary>"`** —
+  this is your job. The commit message MUST start with `fix(<bd_id>):`
+  exactly (no `chore:`, no `feat:`, no other prefix). bd-gate, release-
+  notes generators, and audit grep all depend on this convention.
+- ✅ **`git commit --amend` to absorb post-commit state changes** (e.g.
+  the `.beads/issues.jsonl` mutation from `bd close`). Required for
+  working-tree-clean acceptance.
+- ✅ **`git push --force-with-lease`** — allowed (and expected) when
+  you've amended the fix commit. NOT regular `--force`.
+- ✅ **`bd close <bd_id>`** — only after `.test-result` is written and
+  matches HEAD.
+- ✅ **`pi --no-tools --provider <quinn-provider> --model <quinn-model>`** —
+  per-commit Quinn review. If Quinn says REQUEST_CHANGES, kanban_block
+  with the findings; do not push.
+- ✅ **Source-changed pre-check** — refuse to land a HEAD commit that
+  doesn't change any `src/*` file (catches metadata-only commits that
+  some upstream worker accidentally created).
+
+What you DO NOT do:
+- ❌ **Modify source code.** If Quinn finds issues, you create a
+  follow-up impl task; you don't edit the code yourself.
+- ❌ **Modify tests.** Same as everyone else — tests are sacred.
+- ❌ **`git push --force` (without `--lease`).** Lease prevents
+  clobbering concurrent pushes.
+
+Idempotency rule: every step you take must be safe to re-run. If HEAD
+already matches `fix(<bd_id>):`, skip the commit. If `.test-result`
+already matches HEAD, skip the write. If `bd show <id>` is closed,
+skip the bd close. This is what makes assertion 7 (idempotent under
+reclaim) pass.
+
 ## Liveness — heartbeat to keep your kanban claim
 
 The kanban dispatcher reclaims any task whose claim has been silent for **15 minutes**. When that fires, a duplicate worker spawns on the same task and you race against yourself — neither makes clean progress.
@@ -164,7 +200,31 @@ if [[ "$bd_status" != "closed" ]]; then
 fi
 ```
 
-The `bd-gate` pre-tool hook will check `.hermes/sessions/<bd_id>.test-result` exists with `PASS <HEAD-sha>` matching current HEAD before letting the close through. Cross-check already wrote this file; if it's missing, the close fails — `kanban_block(reason="bd-gate refused close: .test-result missing/mismatched")`.
+The `bd-gate` pre-tool hook will check `.hermes/sessions/<bd_id>.test-result` exists with `PASS <HEAD-sha>` matching current HEAD before letting the close through.
+
+**REFRESH `.test-result` AFTER EVERY change to HEAD — including the amend.** This is critical and non-obvious. The order is:
+
+1. `git commit` for the `fix(<bd_id>):` → HEAD = sha_A
+2. Write `.test-result` to `PASS sha_A`
+3. `bd close` (gated by `bd-gate`, which sees `.test-result` matches HEAD — passes)
+4. `bd close` mutated `.beads/issues.jsonl`. Now `git add .beads/` + `git commit --amend --no-edit` → HEAD = sha_B (different sha from step 1!)
+5. **REFRESH `.test-result` to `PASS sha_B`** — this step is the one that's easy to forget, and skipping it leaves the working tree with a stale attestation that points at the abandoned pre-amend sha.
+6. `git push --force-with-lease` — required because the amend rewrote sha_A → sha_B; lease is safe because no one else pushes here.
+
+The refresh-after-amend snippet:
+
+```bash
+post_amend_head=$(git -C "$worktree" rev-parse HEAD)
+test_result_file="$worktree/.hermes/sessions/${bd_id}.test-result"
+if ! grep -q "$post_amend_head" "$test_result_file" 2>/dev/null; then
+  mkdir -p "$worktree/.hermes/sessions"
+  echo "PASS $post_amend_head" > "$test_result_file"
+fi
+```
+
+Idempotent on reclaim: if HEAD didn't change between runs, the file already matches and the write is skipped.
+
+If `.test-result` is missing entirely (cross-check didn't write it), that's an upstream bug — `kanban_block(reason="bd-gate refused close: .test-result missing — cross-check upstream failure")` and stop.
 
 ### Step 6: Push (if origin is behind HEAD)
 
@@ -215,9 +275,10 @@ If you find yourself wanting to add a "redo this if reclaimed" branch, you've br
 ## Pitfalls
 
 - **Don't `git add -A` or `git add .`** — bans inherited from CLAUDE.md Land-the-Plane Protocol; ESLint CI hook bans them; this lander honors the same constraint via explicit file lists.
+- **DO check for `AGENTS.md` modifications.** The stack-detect worker upstream may have written a `## Project Stack` block to `AGENTS.md` (a tracked file). If `git status --porcelain AGENTS.md` shows it modified, include it in your staged file list along with `src/`. Otherwise the working tree is dirty after you land.
 - **Don't skip the source-changed pre-check.** It's the load-bearing defense against worker LLMs gaming the close protocol with metadata-only commits.
 - **Don't double-commit on reclaim.** Read HEAD message FIRST. If it already matches `fix($bd_id):`, skip step 3 entirely.
-- **Don't write `.test-result` from this skill.** Cross-check does that. If it's missing here, fail loud (`kanban_block`) — don't paper over.
+- **DO refresh `.test-result` to match post-commit HEAD.** Cross-check writes the initial file with its own (pre-commit) sha; you update it to the post-commit sha so bd-gate's HEAD-match check passes. Idempotent. If `.test-result` is *missing* (not just stale), THAT'S the upstream-bug case — fail loud with `kanban_block`.
 - **Don't bypass `bd-gate`.** If the close fails because the gate refuses, that's signal — `kanban_block` and let the orchestrator route the issue.
 
 ## References

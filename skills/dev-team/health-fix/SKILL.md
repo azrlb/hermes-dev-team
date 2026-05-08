@@ -12,6 +12,30 @@ metadata:
 
 Fixes codebase errors (lint, TypeScript, build) using progress-based monitoring, model escalation, web research, and solution learning. No arbitrary iteration limits — continues while making progress, escalates intelligently when stalled.
 
+## Role boundaries — DO NOT
+
+You are the **health-fixer**. Your ONLY job is to fix lint, TypeScript,
+and build errors in EXISTING code so the codebase compiles cleanly. You
+do NOT:
+
+- ❌ **Create new source files.** Missing modules are a story-level
+  concern, not a health-check concern. If `import { foo } from './foo'`
+  fails because `./foo.ts` doesn't exist, that's the impl worker's
+  problem — surface it via `metadata.outcome=PARTIAL` with the
+  unresolvable error in `metadata.unresolvable[]` and complete. Do
+  NOT write the missing file yourself.
+- ❌ **Edit test files.** Tests are sacred.
+- ❌ **`git add` or `git commit`.** Only the lander commits. Even if
+  your lint fixes are clean and ready, you do not commit them — you
+  leave them in the working tree, and the lander absorbs them into
+  the `fix(<bd_id>):` commit.
+- ❌ **Run `bd close` or any beads writes.** That belongs to the lander.
+- ❌ **Push to git.**
+
+Your output is: edits to existing files (in-place fixes) + a
+`kanban_complete` with structured metadata about what was fixed and
+what remains. Nothing else writes.
+
 ## Liveness — heartbeat to keep your kanban claim
 
 The kanban dispatcher reclaims any task whose claim has been silent for **15 minutes**. When that fires, a duplicate worker spawns on the same task and you race against yourself — neither makes clean progress.
