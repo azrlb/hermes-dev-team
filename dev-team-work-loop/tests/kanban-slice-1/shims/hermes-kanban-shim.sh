@@ -43,6 +43,9 @@ for arg in "$@"; do
     dev-team/story-test-review)    DEV_SKILL=story-test-review;    break ;;
     dev-team/infra-fix)            DEV_SKILL=infra-fix;            break ;;
     dev-team/prereq-builder)       DEV_SKILL=prereq-builder;       break ;;
+    dev-team/email-handler)        DEV_SKILL=email-handler;        break ;;
+    dev-team/support-concierge)    DEV_SKILL=support-concierge;    break ;;
+    dev-team/error-fix)            DEV_SKILL=error-fix;            break ;;
   esac
 done
 
@@ -165,6 +168,49 @@ except: print(0)
     "$REAL_HERMES" kanban complete "$TASK_ID" \
       --summary "prereq-builder (shim): built the missing helper module" \
       --metadata "{\"bd_id\":\"$BD_ID\",\"prereq_kind\":\"helper-module\",\"prereq_built\":true,\"artifacts\":[\"src/lib/util.ts\"]}"
+    ;;
+
+  email-handler)
+    # Sidecar runtime (FR-P4.7): inbound email handler. In production,
+    # reads Postmark payload, drafts reply, emits via Resend. For the
+    # fixture, emit canned auto-resolution metadata.
+    "$REAL_HERMES" kanban complete "$TASK_ID" \
+      --summary "email-handler (shim): support email auto-resolved" \
+      --metadata "{\"classification\":\"support\",\"outcome\":\"AUTO_RESOLVED\",\"draft_text\":\"Thanks for reaching out — your account has been updated. Reply if any issue persists.\",\"resend_message_id\":\"shim-msg-$$\"}"
+    ;;
+
+  support-concierge)
+    # Sidecar runtime (FR-P4): chat-widget support. In production, pulls
+    # user context via app HTTP API + matches against domain skills.
+    # For the fixture, demonstrate two outcomes based on
+    # HERMES_SHIM_SUPPORT_OUTCOME env var: AUTO_RESOLVED (default) or
+    # ESCALATED (kanban_block to operator).
+    SUPPORT_OUTCOME="${HERMES_SHIM_SUPPORT_OUTCOME:-AUTO_RESOLVED}"
+    if [[ "$SUPPORT_OUTCOME" == "ESCALATED" ]]; then
+      "$REAL_HERMES" kanban block "$TASK_ID" \
+        "support-concierge (shim): novel issue, no skill match — escalating to operator review"
+    else
+      "$REAL_HERMES" kanban complete "$TASK_ID" \
+        --summary "support-concierge (shim): chat resolved via skill match" \
+        --metadata "{\"intent\":\"how-to\",\"outcome\":\"AUTO_RESOLVED\",\"reply_text\":\"To do X, go to Settings → Y → Z. Let me know if that works!\",\"satisfaction_pending\":true}"
+    fi
+    ;;
+
+  error-fix)
+    # Sidecar runtime (FR-P3): production error remediation. In
+    # production, classifies + matches skill + applies fix + verifies.
+    # For the fixture, demonstrate two outcomes based on
+    # HERMES_SHIM_ERROR_OUTCOME env var: AUTO_FIXED (default — known
+    # skill match) or NO_MATCH (escalate to deep-research-bridge).
+    ERROR_OUTCOME="${HERMES_SHIM_ERROR_OUTCOME:-AUTO_FIXED}"
+    if [[ "$ERROR_OUTCOME" == "NO_MATCH" ]]; then
+      "$REAL_HERMES" kanban block "$TASK_ID" \
+        "BLOCKER_TYPE=HARD_PROBLEM error-fix (shim): no matching skill — escalate to deep-research"
+    else
+      "$REAL_HERMES" kanban complete "$TASK_ID" \
+        --summary "error-fix (shim): TransientAPI error remediated by skill" \
+        --metadata "{\"error_class\":\"TransientAPI\",\"skill_matched\":\"transient-api-retry-with-backoff\",\"outcome\":\"AUTO_FIXED\",\"remediation_diff\":\"retried with exponential backoff, succeeded on attempt 2\",\"regression_check\":\"PASSED\"}"
+    fi
     ;;
 
   cross-check)
