@@ -38,9 +38,45 @@ hermes chat --yolo -s dev-team/vibe-loop -q "Build feature X. STOP at Phase 9 / 
 
 Both paths route through the same vibe-loop SKILL.md but exit cleanly at Phase 9.
 
-## How the build phase consumes this
+## Phase 8.5 — Kanban dual-write (Slice 5)
 
-After this skill exits, run:
+**After each `bd create` in Phase 8, ALSO emit a `kanban_create` for a story-root task** so the kanban-native dev-team takes over execution. Both substrates coexist: bd remains the issue tracker / source of acceptance criteria; kanban is the runtime executor that walks the per-story DAG (stack-detect → health-check → impl → verify → land) per Slices 1–3.
+
+For each bd issue produced in Phase 8, do:
+
+```python
+import os, subprocess
+# After: bd_id = result of `bd create ...`
+# story_file and test_file came from Phase 7 (story-specs / tdd)
+
+kanban_create(
+    title=f"story-root for {bd_id}",
+    assignee="dev-orchestrator",
+    tenant=os.environ.get("HERMES_TENANT", "default"),
+    workspace=f"dir:{os.path.abspath('.')}",
+    skill="dev-team/kanban-decomposition",
+    body=f"""Decompose story {bd_id} for kanban execution.
+bd_id={bd_id}
+story_file={story_file}
+test_file={test_file}
+worktree={os.path.abspath('.')}
+mode={'greenfield' if not os.path.exists('package.json') else 'brownfield'}""",
+)
+```
+
+The kanban dispatcher (running locally on `hermes kanban dispatch` ticks, OR daemon-mode via the gateway) then:
+
+1. Spawns dev-orchestrator → invokes `scripts/kanban-decompose-story.sh` → creates 5 children (stack-detect, health-check, impl, verify, land)
+2. Children walk the DAG via the Slices 1–3 pattern. Reactive escalation handles failures (Slice 2 / 2.5).
+3. Lander commits with `fix(<bd_id>):`, closes bd, pushes (Slice 3 role boundaries enforced).
+
+**Why dual-write instead of replacing bd:** `bd` remains the human-readable issue source (your `_bmad-output/` planning artifacts produce `bd create`s; that's the canonical input). Kanban is just the runtime substrate that EXECUTES each bd issue. They serve different layers; both stay.
+
+**Where this matters for the LivingApp ecosystem:** the same dual-write pattern flows into the Sidecar (PRD §FR-P3, FR-P7). Each Sidecar-detected error or experiment is also a kanban task — the Sidecar inherits the same orchestrator/escalator pattern we proved here on the laptop side.
+
+## How the legacy build phase consumed this (pre-Slice 5)
+
+For backward compatibility with the pre-kanban flow, after this skill exits, you can still run:
 
 ```bash
 /media/bob/C/AI_Projects/hermes-dev-team/scripts/pi-build-loop.sh /path/to/repo
@@ -55,6 +91,8 @@ The build script:
 4. Dispatches Pi (devstral-small-2:24b via Ollama) with the full story content as context
 5. Pi runs the issue end-to-end: claim → implement → test → commit → close → push
 6. bd-gate v0.4 runs the test command from the story spec on close — independent verification
+
+**With Phase 8.5 dual-write enabled, you can skip pi-build-loop.sh entirely** — kanban handles the dispatch via the dev-team workers.
 
 ## Why this works where Phase 10 didn't
 
