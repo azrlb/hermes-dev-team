@@ -33,12 +33,16 @@ WORKSPACE="${HERMES_KANBAN_WORKSPACE:-}"
 DEV_SKILL=""
 for arg in "$@"; do
   case "$arg" in
-    dev-team/stack-detect)        DEV_SKILL=stack-detect;        break ;;
-    dev-team/health-fix)          DEV_SKILL=health-fix;          break ;;
-    dev-team/pi-dispatcher)       DEV_SKILL=pi-dispatcher;       break ;;
-    dev-team/cross-check)         DEV_SKILL=cross-check;         break ;;
-    dev-team/land-the-plane)      DEV_SKILL=land-the-plane;      break ;;
+    dev-team/stack-detect)         DEV_SKILL=stack-detect;         break ;;
+    dev-team/health-fix)           DEV_SKILL=health-fix;           break ;;
+    dev-team/pi-dispatcher)        DEV_SKILL=pi-dispatcher;        break ;;
+    dev-team/cross-check)          DEV_SKILL=cross-check;          break ;;
+    dev-team/land-the-plane)       DEV_SKILL=land-the-plane;       break ;;
     dev-team/deep-research-bridge) DEV_SKILL=deep-research-bridge; break ;;
+    dev-team/story-rewrite)        DEV_SKILL=story-rewrite;        break ;;
+    dev-team/story-test-review)    DEV_SKILL=story-test-review;    break ;;
+    dev-team/infra-fix)            DEV_SKILL=infra-fix;            break ;;
+    dev-team/prereq-builder)       DEV_SKILL=prereq-builder;       break ;;
   esac
 done
 
@@ -88,9 +92,15 @@ except: print(0)
 " 2>/dev/null || echo 0)
     if [[ "$BLOCK_COUNT" -lt "$FAIL_FIRST" ]]; then
       # Block — let the reactive watcher decide the next strategy.
+      # HERMES_SHIM_BLOCKER_TYPE controls which classification the shim emits
+      # (default HARD_PROBLEM = Slice 2 behavior — routes to deep-research-bridge).
+      # Other values exercise the Slice 2.5 branches: STORY_AMBIGUITY,
+      # TEST_MISMATCH, MISSING_DEPENDENCY, INFRA. The watcher parses the
+      # `BLOCKER_TYPE=X` token from the block reason to route.
+      BLOCKER_TYPE="${HERMES_SHIM_BLOCKER_TYPE:-HARD_PROBLEM}"
       ATTEMPT=$((BLOCK_COUNT + 1))
       "$REAL_HERMES" kanban block "$TASK_ID" \
-        "pi-dispatcher (shim): tests still failing on attempt $ATTEMPT — escalate"
+        "BLOCKER_TYPE=$BLOCKER_TYPE pi-dispatcher (shim): tests still failing on attempt $ATTEMPT — escalate"
       exit 0
     fi
 
@@ -109,12 +119,52 @@ except: print(0)
     ;;
 
   deep-research-bridge)
-    # Slice 2 escalation strategy: wraps scripts/escalator.py in production.
-    # For the test fixture, emit canned research findings so we don't actually
-    # run the multi-tier chain (which would call real LLMs).
+    # Slice 2 escalation strategy (HARD_PROBLEM): wraps scripts/escalator.py
+    # in production. For the test fixture, emit canned research findings so
+    # we don't actually run the multi-tier chain (which would call real LLMs).
     "$REAL_HERMES" kanban complete "$TASK_ID" \
       --summary "deep-research-bridge (shim): canned findings — root cause is X, suggest approach Y" \
       --metadata "{\"bd_id\":\"$BD_ID\",\"phase_reached\":6,\"result\":\"PASS\",\"approaches_tried\":[\"different-prompt\",\"web-research\",\"deepseek-r1\"],\"next_nudge\":\"apply approach Y on the next attempt\"}"
+    ;;
+
+  story-rewrite)
+    # Slice 2.5 branch (STORY_AMBIGUITY): BMAD-SM rewrites the story spec
+    # so the impl agent has unambiguous acceptance criteria. In production,
+    # invokes a `bmad-sm` profile to read the original story + write a
+    # corrected version. For the fixture, emit canned rewritten content.
+    "$REAL_HERMES" kanban complete "$TASK_ID" \
+      --summary "story-rewrite (shim): rewrote story with explicit AC" \
+      --metadata "{\"bd_id\":\"$BD_ID\",\"original_ambiguity\":\"AC mentions 'add' but test expects integer math vs floating point\",\"rewritten_ac\":\"add(a,b) returns a+b for all numeric inputs (int and float)\"}"
+    ;;
+
+  story-test-review)
+    # Slice 2.5 branch (TEST_MISMATCH): pi-quinn reviews the test file to
+    # decide whether the test is correct. In production, invokes Quinn with
+    # bmad-code-review-acceptance against the test file. For the fixture,
+    # emit a canned finding (the test is fine, the impl was wrong).
+    "$REAL_HERMES" kanban complete "$TASK_ID" \
+      --summary "story-test-review (shim): test reviewed — test is correct, impl needs fix" \
+      --metadata "{\"bd_id\":\"$BD_ID\",\"test_file\":\"$TEST_FILE\",\"test_correctness\":\"VALID\",\"finding\":\"test correctly asserts add(a,b)==a+b; impl should not skip the case for negatives\"}"
+    ;;
+
+  infra-fix)
+    # Slice 2.5 branch (INFRA): hermes-health attempts an automated infra
+    # fix (npm install, restart service, etc.) for known infra issues. In
+    # production, runs deterministic shell helpers. For the fixture, emit
+    # canned success metadata.
+    "$REAL_HERMES" kanban complete "$TASK_ID" \
+      --summary "infra-fix (shim): re-ran npm install, dependencies resolved" \
+      --metadata "{\"bd_id\":\"$BD_ID\",\"fix_kind\":\"missing-module\",\"fix_applied\":true,\"diagnostic\":\"node_modules was incomplete; re-installed\"}"
+    ;;
+
+  prereq-builder)
+    # Slice 2.5 branch (MISSING_DEPENDENCY): builds a required prerequisite
+    # before the impl can proceed. In production, this is a real story-shape
+    # task (e.g. "build the auth middleware first"). For the fixture, emit
+    # canned built-the-thing metadata.
+    "$REAL_HERMES" kanban complete "$TASK_ID" \
+      --summary "prereq-builder (shim): built the missing helper module" \
+      --metadata "{\"bd_id\":\"$BD_ID\",\"prereq_kind\":\"helper-module\",\"prereq_built\":true,\"artifacts\":[\"src/lib/util.ts\"]}"
     ;;
 
   cross-check)
