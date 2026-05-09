@@ -71,21 +71,104 @@ ctx = kanban_show()
 parents = ctx.get("parents", [])
 verify_md = next(p["metadata"] for p in parents if "story_verify" in p.get("title", ""))
 
-bd_id    = verify_md["bd_id"]
-head_sha = verify_md["head_sha"]
-worktree = os.environ["HERMES_KANBAN_WORKSPACE"]  # dir:<path> resolves here
+bd_id     = verify_md["bd_id"]
+head_sha  = verify_md["head_sha"]
+test_file = verify_md["test_file"]   # absolute path to the bug's failing test
+worktree  = os.environ["HERMES_KANBAN_WORKSPACE"]  # dir:<path> resolves here
 
-# The cross-check verified at head_sha. If HEAD has moved since (race), you're
-# operating on a different commit than what was verified — refuse to close.
+# The cross-check verified at head_sha. If HEAD has moved since, you're
+# operating on a different commit than what was verified — see "HEAD moved"
+# protocol below. NEVER speculate about what other workers did.
 current_head = subprocess.run(
     ["git", "-C", worktree, "rev-parse", "HEAD"],
     capture_output=True, text=True
 ).stdout.strip()
 if current_head != head_sha:
-    kanban_block(reason=f"HEAD moved between verify ({head_sha[:8]}) and land ({current_head[:8]}) — manual review")
+    handle_head_moved(bd_id, head_sha, current_head, test_file, worktree)
 ```
 
 If `metadata.outcome` from the `[story-verify]` parent isn't `VERIFIED`, `kanban_block(reason="story-verify did not return VERIFIED")`. Never land an unverified story.
+
+### HEAD moved protocol (HALLUCINATION GUARDRAIL)
+
+**Real failure mode observed in the eval (2026-05-08):** when HEAD
+moves between verify and land, some worker LLMs invent a confident
+narrative — "the fix is already at HEAD via a different commit," "my
+fix was bundled into another story's mega-commit," "working tree is
+clean because the work is already there." These narratives are
+**hallucinations**. The lander cannot directly observe what other
+workers did; it only sees git state. Quinn does not catch these
+because no commit is made — Quinn only runs on actual diffs.
+
+**The rule: never narrate. Only report objective evidence.**
+
+When `current_head != head_sha`, run the bug's specific test against
+current HEAD and let the test result decide what you write in the
+block reason:
+
+```bash
+# Re-run the bug's specific test at current HEAD
+test_output=$(cd "$worktree" && npx vitest run "$test_file" --reporter=verbose 2>&1)
+if echo "$test_output" | grep -qE 'Tests +[0-9]+ passed.*0 failed|^Test Files +1 passed'; then
+  test_status="PASS"
+else
+  test_status="FAIL"
+fi
+```
+
+Then block with one of these **terse, factual** reasons. Pick the line
+that matches your evidence; do not embellish, do not speculate, do not
+write paragraphs about what other commits might have done:
+
+| Test status at HEAD | Block reason (verbatim format) |
+|---|---|
+| `FAIL` | `HEAD moved {old}→{new}; target test still failing at HEAD; substrate race or work lost` |
+| `PASS` | `HEAD moved {old}→{new}; target test passes at HEAD; orchestrator must reconcile attribution` |
+
+Concrete code:
+
+```python
+def handle_head_moved(bd_id, expected_sha, actual_sha, test_file, worktree):
+    test_output = subprocess.run(
+        ["npx", "vitest", "run", test_file, "--reporter=verbose"],
+        cwd=worktree, capture_output=True, text=True, timeout=120,
+    )
+    combined = test_output.stdout + test_output.stderr
+    test_passes = (
+        "Tests" in combined
+        and re.search(r'Tests\s+\d+ passed.*0 failed', combined) is not None
+    ) or re.search(r'Test Files\s+1 passed', combined) is not None
+
+    short_old, short_new = expected_sha[:8], actual_sha[:8]
+    if test_passes:
+        reason = (
+            f"HEAD moved {short_old}→{short_new}; "
+            f"target test passes at HEAD; orchestrator must reconcile attribution"
+        )
+    else:
+        reason = (
+            f"HEAD moved {short_old}→{short_new}; "
+            f"target test still failing at HEAD; substrate race or work lost"
+        )
+    kanban_block(reason=reason)
+    sys.exit(0)
+```
+
+**Banned phrases** (these are confabulation tells; if you find
+yourself writing them, stop and re-run the test):
+
+- "the fix is already at HEAD via..."
+- "another worker committed..."
+- "my fix was bundled into..."
+- "mega-commit absorbed..."
+- "working tree is clean because..."
+
+**Why these are banned:** the lander has no way to know what other
+workers did. The git log shows commits, but commits don't reveal
+intent. The only thing the lander can observe is "does this test pass
+at this HEAD?" — that's the objective signal. Everything else is
+narrative invention. Block with the test result; let the orchestrator
+investigate.
 
 ## Convergent state checks (the load-bearing pattern)
 
