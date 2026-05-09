@@ -2,11 +2,16 @@
 
 Routes failure classifications from the failure-classifier to the appropriate handler. Goal: get the story DONE — every blocker type has a concrete resolution path.
 
-## Trigger
+## Two invocation paths
 
-Called by the work-loop skill after a story fails 3 attempts and the failure-classifier produces a blocker classification.
+This skill has two entry paths that share the same recovery ladder:
 
-## Input
+- **Legacy work-loop path** — called after a story fails 3 attempts and the failure-classifier produces a `blocker` JSON in `bd show {id}`. Inputs come from Beads. See § Legacy work-loop input.
+- **Kanban-native path** — called from an `escalate-<task_id>` task spawned by `dev-team/block-watcher`. Inputs come from the blocked task's `kanban_show`. See § Kanban-native invocation.
+
+Both paths fan out into the same § Escalation Ladder below; only the input parsing and the bookkeeping (bd vs kanban) differ. Pick the path based on whether `HERMES_KANBAN_TASK` is set in the environment.
+
+## Legacy work-loop input
 
 Read from Beads issue metadata (`bd show {id} --json`):
 ```json
@@ -20,7 +25,104 @@ Read from Beads issue metadata (`bd show {id} --json`):
 }
 ```
 
+## Kanban-native invocation
+
+Spawned by `dev-team/block-watcher` when a sibling task blocks in a tenant whose orchestrator has already completed. Your task title looks like `escalate-<blocked_task_id>` and your body contains:
+
+```
+Escalation for blocked task <id>.
+blocked_task_id=<id>
+blocked_task_title=<title>
+block_reason=<verbatim reason from the blocked event>
+tenant=<T>
+```
+
+### Step 1 — read the blocked task
+
+```python
+import os, re
+ctx = kanban_show()
+body = ctx.get("body", "")
+blocked_id = re.search(r'^blocked_task_id=(.+)$', body, re.MULTILINE).group(1).strip()
+block_reason = re.search(r'^block_reason=(.+)$', body, re.MULTILINE).group(1).strip()
+blocked = kanban_show(blocked_id)
+```
+
+Heartbeat before each substantive step.
+
+### Step 2 — classify by matching block_reason against the structured templates
+
+The lander, cross-check, and pi-dispatcher emit terse, factual block reasons (no narrative — see `skills/dev-team/land-the-plane/SKILL.md` § HEAD moved protocol for the no-narrate rule). Match against these templates in priority order:
+
+| Block reason matches… | blocker_type | Recovery branch |
+|---|---|---|
+| `target test passes at HEAD; orchestrator must reconcile attribution` | **HEAD_MOVED_PASS** | Cherry-pick or amend to attribute the fix to the correct bd_id, then `bd close`. Spawn a `[story-attribute-<id>]` task assigned to `hermes-lander`. |
+| `target test still failing at HEAD; substrate race or work lost` | **HEAD_MOVED_FAIL** | Re-spawn `[story-impl-<id>-attempt-N]` (N = next available number). The previous work was lost; redo it. |
+| `bd-gate refused close: .test-result missing` (or any cross-check failure pattern) | **VERIFY_MISSING** | Re-spawn `[story-verify-<id>]`. The cross-check upstream failed; redo it. |
+| `Quinn REQUEST_CHANGES:` | **QUINN_BLOCK** | Spawn `[story-impl-quinn-fix-<id>-N]` per the Slice 2 pattern. |
+| `push failed:` | **PUSH_FAILED** | Retry once with `git pull --rebase` then push; if it fails again, `kanban_block` with `BLOCKER_TYPE=INFRA` so the operator sees it. |
+| `BLOCKER_TYPE=STORY_AMBIGUITY ` (or `... ambiguity ...`) | **STORY_AMBIGUITY** | Spawn `[story-rewrite-<id>]` per the Slice 2.5 STORY_AMBIGUITY branch. |
+| `BLOCKER_TYPE=TEST_MISMATCH ` | **TEST_MISMATCH** | Spawn `[story-test-review-<id>]` per the Slice 2.5 TEST_MISMATCH branch. |
+| `BLOCKER_TYPE=MISSING_DEPENDENCY ` | **MISSING_DEPENDENCY** | Spawn `[prereq-builder-<id>]` per the Slice 2.5 MISSING_DEPENDENCY branch. |
+| `BLOCKER_TYPE=INFRA ` | **INFRA** | Spawn `[infra-fix-<id>]` per the Slice 2.5 INFRA branch. |
+| `BLOCKER_TYPE=HARD_PROBLEM ` (or default fall-through) | **HARD_PROBLEM** | Spawn `[deep-research-bridge-<id>]` per the Slice 2 HARD_PROBLEM branch. |
+| Any non-matching reason | **UNCLASSIFIED** | `kanban_block(reason="escalation-handler: could not classify '<first 80 chars>'; operator review required")`. |
+
+The first matching row wins. Do NOT improvise classifications outside this table — if the reason doesn't match, fall through to UNCLASSIFIED.
+
+### Step 3 — spawn the recovery task
+
+For each classified blocker type, create the recovery task with the parent set to the blocked task so dispatcher can sequence it:
+
+```python
+recovery = kanban_create(
+    title=f"[{recovery_prefix}-{blocked_id}]",
+    assignee=recovery_assignee,
+    tenant=ctx["task"]["tenant"],
+    workspace=blocked.get("task", {}).get("workspace_path", ""),
+    skill=recovery_skill,
+    body=f"""Recovery for blocked task {blocked_id}.
+parent_task={blocked_id}
+parent_block_reason={block_reason}
+bd_id={extract_bd_id_from(blocked)}
+worktree={blocked.get("task", {}).get("workspace_path", "")}
+test_file={extract_test_file_from(blocked)}
+""",
+)
+kanban_link(parent_id=blocked_id, child_id=recovery["id"])
+```
+
+The `recovery_prefix`, `recovery_assignee`, and `recovery_skill` come from the table above (e.g., `story-impl-attempt-2` / `pi-coder` / `dev-team/pi-dispatcher`). The recovery task's worker fetches its `parent_block_reason` to choose its strategy.
+
+### Step 4 — complete your own escalator task
+
+```python
+kanban_complete(
+    summary=f"escalation-handler: classified as {blocker_type}, spawned {recovery['id']}",
+    metadata={
+        "blocked_task_id": blocked_id,
+        "blocker_type": blocker_type,
+        "block_reason": block_reason,
+        "recovery_task_id": recovery["id"],
+        "recovery_skill": recovery_skill,
+    },
+)
+```
+
+### Idempotency
+
+If a recovery task with the same title prefix already exists in the tenant (any status), skip the spawn and complete with `metadata.outcome="already_recovered"`. The block-watcher's per-block dedupe normally prevents this, but a manual re-trigger or duplicate watcher run could reach here.
+
+### What you do NOT do (kanban-native path)
+
+- ❌ **Modify code**, even to apply an obvious one-line fix. Recovery tasks own that work.
+- ❌ **`bd close` or `bd update`.** That's the lander's job after the recovery completes.
+- ❌ **Touch the blocked task's status.** Do not unblock; the dispatcher transitions the blocked task back to `ready` automatically when its child recovery completes (per Slice 2's reactive contract).
+- ❌ **Spawn more than one recovery per escalator invocation.** One escalator → one recovery task.
+
 ## Escalation Ladder
+
+> The branches below describe legacy work-loop bookkeeping (Beads + Telegram). The kanban-native path uses the same five core types via § Kanban-native invocation Step 3, but with `kanban_create` and parent-link bookkeeping in place of `bd dep add` + Telegram. The HEAD_MOVED_*, QUINN_BLOCK, VERIFY_MISSING, and PUSH_FAILED rows in the kanban table above are kanban-only extensions that do not appear in the legacy ladder.
 
 ### STORY_AMBIGUITY
 **Cause:** Acceptance criteria say X but test expects Y, or spec is unclear.
