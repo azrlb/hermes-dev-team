@@ -72,7 +72,7 @@ The first matching row wins. Do NOT improvise classifications outside this table
 
 ### Step 3 — spawn the recovery task
 
-For each classified blocker type, create the recovery task with the parent set to the blocked task so dispatcher can sequence it:
+For each classified blocker type, create a free-standing recovery task. **Do NOT call `kanban_link`** with the blocked task as a parent — `blocked` is a non-terminal-but-not-runnable state, so linking would keep the recovery stuck in `todo` forever. Capture the relationship in body + metadata for audit:
 
 ```python
 recovery = kanban_create(
@@ -82,17 +82,16 @@ recovery = kanban_create(
     workspace=blocked.get("task", {}).get("workspace_path", ""),
     skill=recovery_skill,
     body=f"""Recovery for blocked task {blocked_id}.
-parent_task={blocked_id}
+recovers_blocked_task={blocked_id}
 parent_block_reason={block_reason}
 bd_id={extract_bd_id_from(blocked)}
 worktree={blocked.get("task", {}).get("workspace_path", "")}
 test_file={extract_test_file_from(blocked)}
 """,
 )
-kanban_link(parent_id=blocked_id, child_id=recovery["id"])
 ```
 
-The `recovery_prefix`, `recovery_assignee`, and `recovery_skill` come from the table above (e.g., `story-impl-attempt-2` / `pi-coder` / `dev-team/pi-dispatcher`). The recovery task's worker fetches its `parent_block_reason` to choose its strategy.
+The `recovery_prefix`, `recovery_assignee`, and `recovery_skill` come from the table above (e.g., `story-impl-attempt-2` / `pi-coder` / `dev-team/pi-dispatcher`). The recovery task's worker reads its `parent_block_reason` from the body to choose its strategy. The original blocked task is left blocked — it's an audit artifact at this point; recovery flows through the new sibling.
 
 ### Step 4 — complete your own escalator task
 

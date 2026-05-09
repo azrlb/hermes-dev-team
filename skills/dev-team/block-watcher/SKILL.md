@@ -98,7 +98,7 @@ Each iteration:
    - skills does NOT contain `"dev-team/block-watcher"` (don't escalate watchers)
    - id != self_id
 4. **For each candidate block:** check whether an `escalate-<id>` task already exists in the tenant (any status). Use `kanban_list(tenant=tenant)` results — match `task.title.startswith(f"escalate-{candidate.id}")`. If found, skip (idempotency).
-5. **Spawn the escalator** for each new candidate:
+5. **Spawn the escalator** for each new candidate. **Do NOT call `kanban_link`** — a blocked task is non-terminal forever, so linking it as a parent keeps the escalator stuck in `todo`. Use the body/metadata for the audit trail:
    ```python
    block_reason = next(
        (e["payload"]["reason"] for e in candidate["events"] if e["kind"] == "blocked"),
@@ -118,7 +118,6 @@ Each iteration:
            f"tenant={tenant}\n"
        ),
    )
-   kanban_link(parent_id=candidate["id"], child_id=esc["id"])
    spawned.append((candidate["id"], esc["id"]))
    ```
 6. **Compute exit condition:** count non-watcher, non-self tasks in non-terminal states (`ready`, `todo`, `running`, `triage`). If count is 0, increment `quiet_polls`; otherwise reset to 0. Exit cleanly when `quiet_polls >= 2` (debounce: avoids racing the dispatcher between cycles).
