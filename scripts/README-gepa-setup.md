@@ -19,10 +19,10 @@ Once a month (1st of each month, 03:00 local):
 4. Runs a Quinn-style audit (Sonnet 4.6) on the diff — checks for
    banned-phrase regressions, role-boundary drift, table-structure
    regressions, security-theater additions, semantic drift
-5. **APPROVED** → opens a GitHub PR on a `gepa/<date>-<skill>` branch
-   (no auto-merge — you click merge when comfortable)
+5. **APPROVED** → commits the evolved SKILL.md directly to dev and
+   pushes (fully automated — Sonnet 4.6 audit + fixture run are the gates)
 6. **REJECTED** or **fixture-failed** → archives the candidate to
-   `_evolved/rejected/` with reasoning
+   `_evolved/rejected/` with reasoning, no commit
 
 All artifacts (GEPA logs, audit prompts/responses, evolved candidates,
 decisions) are durable in `_evolved/<date>-<skill>/`. Both directories
@@ -90,15 +90,45 @@ Each run is ~$5–10. Monthly cap with the default 5-iteration setting.
 If you want to cap harder, edit `ITERATIONS` at the top of the script
 (lower iterations = lower cost, less optimization signal).
 
-## What to do when you get a PR
+## You don't need to do anything
 
-1. Read the PR description — the audit's improvement bullets explain what changed
-2. Skim the SKILL.md diff — anything that looks weakening or surprising? Reject.
-3. If you have time: locally re-run the matching fixture against the PR branch
-4. Merge if comfortable; close if not.
+The pipeline is fully autonomous. Sonnet 4.6 acts as the reviewer and
+auto-commits to dev when the audit passes. You don't need to look at
+GitHub, you don't need to merge anything.
 
-## What to do when nothing changed
+If you ever want to see what happened:
+- `logs/gepa-monthly.log` — high-level outcome of each run
+- `_evolved/approved/<date>-<skill>/` — full provenance of shipped evolutions
+- `_evolved/rejected/<date>-<skill>/` — full provenance of rejected proposals
+- `git log --oneline --grep "GEPA-evolved"` — every shipped evolution
+  appears as a commit by `gepa-bot`
 
-If GEPA found no improvement (same SKILL hash both sides), you'll see
-an entry in `_evolved/rejected/<date>-<skill>-no-change/`. That's
-normal — the SKILL is already at a local optimum.
+## What "rejected" looks like
+
+- `_evolved/rejected/<date>-<skill>-no-change/` — GEPA couldn't improve
+  on the current SKILL (already at a local optimum). Normal and common.
+- `_evolved/rejected/<date>-<skill>-fixture-fail/` — fixture broke under
+  the candidate. Auto-rejected, never reaches the audit step.
+- `_evolved/rejected/<date>-<skill>/` — Sonnet 4.6 audit said no.
+  Reasoning in `decision.md` inside the directory.
+
+## Audit gate strictness
+
+The audit prompt is conservative because there's no human after it.
+Sonnet 4.6 is told: "If any rule is even arguably violated, REJECT."
+Most proposed evolutions will be REJECTED on minor wording drift —
+that's the safe default. The few that pass are genuine improvements.
+
+## If something goes wrong
+
+If a shipped evolution turns out to break something:
+
+```bash
+cd /media/bob/C/AI_Projects/hermes-dev-team
+git log --oneline -5            # find the gepa-bot commit
+git revert <commit-sha>         # creates an inverse commit
+git push origin dev             # un-ships the evolution
+```
+
+The original SKILL is restored. The next month's GEPA run will start
+from the restored baseline.

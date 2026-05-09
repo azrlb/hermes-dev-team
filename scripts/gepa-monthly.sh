@@ -184,19 +184,27 @@ AUDIT_PROMPT_FILE="$RUN_DIR/audit-prompt.txt"
 AUDIT_RESPONSE_FILE="$RUN_DIR/audit-response.txt"
 
 cat > "$AUDIT_PROMPT_FILE" <<EOF
-You are auditing a proposed change to a Hermes Agent skill file. The skill is dev-team/$SKILL — a runtime instruction file followed by an LLM worker in production.
+You are the SOLE GATE between a GEPA-proposed skill update and production deployment. There is NO HUMAN REVIEW after you. The user has opted out of PR review and the evolved skill is auto-committed and pushed to the dev branch on your APPROVED verdict. Be conservative — when in doubt, REJECT.
 
-Review checklist (each must hold for APPROVED):
+The skill is dev-team/$SKILL — a runtime instruction file followed by an LLM worker in production. Workers spawn from this file every time a story is dispatched.
 
-1. BANNED-PHRASE PRESERVATION — any "banned phrases" or "must-not-write" lists in the ORIGINAL must be preserved verbatim in the EVOLVED version. Removing or weakening them is auto-REJECTED.
+Review checklist (each must hold for APPROVED — failing ANY one is auto-REJECTED):
 
-2. ROLE-BOUNDARY PRESERVATION — DO and DO NOT lists ("you ONLY do X", "you MUST NOT do Y") must be preserved. Adding new boundaries is OK; removing or weakening existing ones is auto-REJECTED.
+1. BANNED-PHRASE PRESERVATION — any "banned phrases", "must-not-write" lists, or "DO NOT NARRATE / SPECULATE" rules in the ORIGINAL must be preserved verbatim in the EVOLVED version. Removing, paraphrasing, or weakening them is auto-REJECTED.
 
-3. TABLE-STRUCTURE PRESERVATION — classification tables, recovery-routing tables, and acceptance-criteria tables must be preserved. Adding rows is OK if labeled as additions; removing or reordering rows is auto-REJECTED.
+2. ROLE-BOUNDARY PRESERVATION — DO and DO NOT lists ("you ONLY do X", "you MUST NOT do Y", "❌" markers) must be preserved. Adding new boundaries is OK; removing or weakening existing ones is auto-REJECTED.
 
-4. NO SECURITY-THEATER ADDITIONS — rules that look strict but actually permit weaker behavior (e.g. "verify X is true" without specifying how, "validate appropriately"). Auto-REJECTED if found.
+3. TABLE-STRUCTURE PRESERVATION — classification tables, recovery-routing tables, blocker-type tables, and acceptance-criteria tables must be preserved. Each row's mapping (e.g. "block_reason X → recovery type Y") must be intact. Adding rows is OK if clearly labeled as additions; removing or reordering rows is auto-REJECTED.
 
-5. NO SEMANTIC DRIFT — the skill's stated purpose, role boundaries, and downstream contract (what calls it, what it produces) must be preserved.
+4. NO SECURITY-THEATER ADDITIONS — rules that look strict but actually permit weaker behavior (e.g. "verify X is true" without specifying HOW, "validate appropriately", "use best judgment", "if applicable"). Auto-REJECTED if found.
+
+5. NO SEMANTIC DRIFT — the skill's stated purpose, role boundaries, downstream contract (what calls it, what it produces), and named contracts (e.g. "kanban_complete with metadata X") must be preserved exactly.
+
+6. NO IMPLEMENTATION DETAIL LOSS — concrete code blocks, file paths, command-line invocations, and exact error patterns must be preserved unless the change is a strict superset (more detail than original, not less).
+
+7. NO CONTRACT-BREAKING CHANGES — anything another skill or test fixture references by name (e.g. metadata field names, kanban event names, block reason templates) must remain identical.
+
+Be especially strict on rule 7: any rename of a field, command, or fixture-referenced string is auto-REJECTED. If unsure whether a string is referenced elsewhere, REJECT.
 
 ORIGINAL SKILL:
 \`\`\`markdown
@@ -209,8 +217,9 @@ $EVOLVED_CONTENT
 \`\`\`
 
 Output format:
-- First line: exactly APPROVED or REJECTED (no other words).
-- Subsequent lines: bullet list of specific concerns (REJECTED) or specific improvements (APPROVED). Reference exact line content where relevant.
+- First line: exactly APPROVED or REJECTED (no other words, no punctuation).
+- Subsequent lines: bullet list of specific concerns (REJECTED) or specific improvements (APPROVED) with exact line content where relevant.
+- If any rule above is even arguably violated, output REJECTED.
 
 Your audit:
 EOF
@@ -268,65 +277,36 @@ log "audit verdict: $VERDICT"
 
 case "$VERDICT" in
   APPROVED)
-    log "APPROVED — opening PR"
-    BRANCH="gepa/$DATESTAMP-$SKILL"
+    log "APPROVED — committing directly to dev (no PR — fully automated)"
     cd "$REPO_ROOT"
-    git checkout -b "$BRANCH" 2>&1 | tee -a "$LOG_FILE" || fail "could not create branch $BRANCH"
+
+    # Commit directly to dev. Two gates already passed: deterministic
+    # fixture run + Sonnet 4.6 audit. The user opted out of PR review.
     cp "$RUN_DIR/evolved.md" "$ORIGINAL_SKILL_PATH"
     git add "$ORIGINAL_SKILL_PATH"
 
-    PR_BODY_FILE="$RUN_DIR/pr-body.md"
-    cat > "$PR_BODY_FILE" <<PR
-## Summary
-
-GEPA-evolved \`dev-team/$SKILL\` (monthly automated run, $DATESTAMP).
-
-## Audit verdict: APPROVED
-
-$(tail -n +2 "$AUDIT_RESPONSE_FILE")
-
-## Provenance
-
-- GEPA log:           \`_evolved/$DATESTAMP-$SKILL/gepa.log\`
-- Audit prompt:       \`_evolved/$DATESTAMP-$SKILL/audit-prompt.txt\`
-- Audit response:     \`_evolved/$DATESTAMP-$SKILL/audit-response.txt\`
-- Iterations:         $ITERATIONS
-- Optimizer model:    $OPTIMIZER_MODEL
-- Eval model:         $EVAL_MODEL
-- Audit model:        $AUDIT_MODEL
-
-## Test plan
-
-- [ ] Skim the SKILL.md diff for surprises
-- [ ] If escalation-handler / block-watcher / land-the-plane: re-run the corresponding fixture locally
-- [ ] Merge if comfortable
-
-🤖 Generated automatically by \`scripts/gepa-monthly.sh\`
-PR
+    AUDIT_NOTES=$(tail -n +2 "$AUDIT_RESPONSE_FILE" | head -20)
 
     git -c user.email=gepa-bot@local -c user.name="gepa-bot" \
-      commit -m "feat(skill): GEPA-evolved $SKILL ($DATESTAMP)
+      commit -m "feat(skill): GEPA-evolved $SKILL ($DATESTAMP) — auto-shipped
 
 Audited by Sonnet 4.6 — APPROVED.
-See _evolved/$DATESTAMP-$SKILL/ for the full provenance trail.
+Fixture(s) re-run with the evolved candidate: PASS.
+
+Audit notes (top of audit response):
+$AUDIT_NOTES
+
+Full provenance: _evolved/approved/$DATESTAMP-$SKILL/
 " 2>&1 | tee -a "$LOG_FILE"
 
-    git push -u origin "$BRANCH" 2>&1 | tee -a "$LOG_FILE" \
-      || { log "push failed — branch retained locally"; }
-
-    if command -v gh >/dev/null 2>&1; then
-      gh pr create --title "GEPA-evolved $SKILL ($DATESTAMP)" --body-file "$PR_BODY_FILE" \
-        2>&1 | tee -a "$LOG_FILE" \
-        || log "gh pr create failed; you can open the PR manually from $BRANCH"
+    if git push origin dev 2>&1 | tee -a "$LOG_FILE"; then
+      log "  pushed to origin/dev — evolved SKILL is now live"
     else
-      log "gh not installed — open the PR manually from branch $BRANCH"
+      log "  push failed — commit retained locally on dev branch; will retry on next run"
     fi
 
-    git checkout - 2>&1 | tee -a "$LOG_FILE"
-    cp "$BACKUP" "$ORIGINAL_SKILL_PATH"
-
     mv "$RUN_DIR" "$EVOLVED_DIR/approved/$DATESTAMP-$SKILL"
-    log "DONE: PR opened, archive at $EVOLVED_DIR/approved/$DATESTAMP-$SKILL"
+    log "DONE: shipped, archive at $EVOLVED_DIR/approved/$DATESTAMP-$SKILL"
     ;;
 
   REJECTED)
