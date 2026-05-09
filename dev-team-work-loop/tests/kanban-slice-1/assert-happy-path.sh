@@ -28,6 +28,33 @@ fail() { printf "  \033[31mFAIL\033[0m  %s\n" "$1"; FAIL=$((FAIL+1)); }
 
 echo "== Hermes Kanban Slice 1 happy-path assertions (story=$STORY_ID, root=$ROOT_TASK_ID) =="
 
+# Wait for all kanban tasks in this tenant to reach a terminal state before
+# any assertion runs. Without this, assertions that count `done` tasks or
+# look up the lander task race the dispatcher and false-FAIL on a busy box.
+# Terminal = anything not in {ready, todo, running, triage}. Bound to ~60s.
+TENANT="KanbanSlice1"
+echo "  waiting for all $TENANT tasks to reach terminal state (max 60s)..."
+deadline=$(( $(date +%s) + 60 ))
+while [[ $(date +%s) -lt $deadline ]]; do
+  non_terminal=$(hermes kanban list --tenant "$TENANT" --json 2>/dev/null | python3 -c "
+import json, sys
+try:
+    d = json.loads(sys.stdin.read())
+    nt = [t for t in (d if isinstance(d, list) else []) if t.get('status') in ('ready','todo','running','triage')]
+    print(len(nt))
+except Exception:
+    print(-1)
+" 2>/dev/null)
+  if [[ "$non_terminal" == "0" ]]; then
+    echo "  all $TENANT tasks terminal."
+    break
+  fi
+  sleep 5
+done
+if [[ "$non_terminal" != "0" ]]; then
+  echo "  WARN: $non_terminal task(s) still non-terminal after 60s — assertions may be flaky."
+fi
+
 # 1. story-root task exists in kanban with the right assignee
 if [[ -n "$ROOT_TASK_ID" ]] && hermes kanban show "$ROOT_TASK_ID" --json 2>/dev/null | grep -q '"assignee"[[:space:]]*:[[:space:]]*"dev-orchestrator"'; then
   pass "1. story-root task created with --assignee dev-orchestrator"

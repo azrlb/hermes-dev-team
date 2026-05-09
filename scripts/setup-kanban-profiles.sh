@@ -42,9 +42,9 @@ if ! command -v hermes >/dev/null 2>&1; then
   exit 1
 fi
 
-REQUIRED_VERSION="0.12.0"
+REQUIRED_VERSION="0.13.0"
 HERMES_VERSION=$(hermes version 2>/dev/null | head -1 | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1 || echo "0.0.0")
-echo "[setup] hermes version: $HERMES_VERSION (required: ≥$REQUIRED_VERSION for kanban)"
+echo "[setup] hermes version: $HERMES_VERSION (required: ≥$REQUIRED_VERSION for durable kanban: heartbeat, zombie detection, diagnostics, multi-board)"
 
 # Sanity-check the default profile is the one we want to clone from.
 if ! hermes profile show default >/dev/null 2>&1; then
