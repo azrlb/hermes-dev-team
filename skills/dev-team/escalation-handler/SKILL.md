@@ -1,3 +1,13 @@
+---
+name: escalation-handler
+description: Routes failure classifications to recovery branches. Two invocation paths — legacy work-loop (Beads + Telegram bookkeeping, 3-failed-attempts trigger) and kanban-native (escalate-<id> task spawned by dev-team/block-watcher, classifies block_reason against an 11-row table including HEAD_MOVED_PASS/FAIL added by the 2026-05-09 lander hallucination fix). Goal: get the story DONE — every blocker type has a concrete resolution path.
+version: 0.2.0
+metadata:
+  hermes:
+    tags: [kanban, dev-team, escalation, recovery, classification]
+    related_skills: [dev-team/block-watcher, dev-team/land-the-plane, dev-team/pi-dispatcher]
+---
+
 # Escalation Handler
 
 Routes failure classifications from the failure-classifier to the appropriate handler. Goal: get the story DONE — every blocker type has a concrete resolution path.
