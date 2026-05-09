@@ -1,0 +1,43 @@
+wing: hermes-dev-team
+rooms:
+- name: documentation
+  description: docs/, top-level *.md, *.pdf, README, SOUL
+  keywords:
+  - documentation
+  - docs
+  - .md
+  - .pdf
+- name: hermes
+  description: Files from hermes/ (core agent runtime)
+  keywords:
+  - hermes
+- name: skills
+  description: Files from skills/
+  keywords:
+  - skills
+- name: pi
+  description: Files from pi/ (agent infrastructure)
+  keywords:
+  - pi
+- name: mcp_servers
+  description: Files from mcp-servers/
+  keywords:
+  - mcp_servers
+  - mcp-servers
+- name: memories
+  description: Files from memories/
+  keywords:
+  - memories
+- name: dev_team
+  description: Files from dev-team-work-loop/
+  keywords:
+  - dev_team
+  - dev-team-work-loop
+- name: cron
+  description: Files from cron/ and bin/
+  keywords:
+  - cron
+  - bin
+- name: general
+  description: Files that don't fit other rooms (config.yaml, install.sh, etc.)
+  keywords: []

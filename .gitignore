@@ -45,6 +45,12 @@ skills/.hub/lock.json
 # Memory locks
 memories/*.lock
 
+# Claude Code project-local runtime state
+.claude/
+
+# Scratch outputs (one-off dumps)
+_output/
+
 # Python bytecode (Hermes plugin runtime)
 __pycache__/
 *.pyc
