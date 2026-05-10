@@ -80,7 +80,7 @@ async function runWorker() {
     SessionManager,
     SettingsManager,
     getLastAssistantUsage,
-  } = await import('@mariozechner/pi-coding-agent');
+  } = await import('@earendil-works/pi-coding-agent');
 
   let session = null;
   let authStorage = null;
