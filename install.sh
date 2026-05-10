@@ -66,6 +66,15 @@ echo "Note: launcher .desktop files at ~/.local/share/applications/ (manual inst
 echo "  hermes-plan-then-build.desktop  — chained plan → build pipeline"
 echo "  hermes-pi-build-loop.desktop    — build only (drain bd queue)"
 echo "  (existing) hermes-vibe-loop.desktop, hermes-vibe-loop-yolo.desktop, hermes-chat.desktop"
+echo
+
+echo "Cron jobs (merge repo's cron/jobs.json into ~/.hermes/cron/jobs.json):"
+if [ -f "$HOME/.hermes/cron/jobs.json" ]; then
+    python3 "$REPO_DIR/scripts/sync-cron-jobs.py"
+else
+    echo "  (skipped — ~/.hermes/cron/jobs.json not found; Hermes may not be installed)"
+fi
+echo
 
 echo "Done. Verify with:"
 echo "  hermes plugins list | grep -E 'bd-gate|numctx-verify'"
