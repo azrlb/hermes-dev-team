@@ -33,16 +33,28 @@ Parse the output:
 
 ### 2. Check Pi Updates
 
-```bash
-pi --version
-# Get current version
+**Use ONLY the canonical upstream package `@earendil-works/pi-coding-agent`.** The historical `@mariozechner/pi-coding-agent` is npm-deprecated and must NOT be installed or updated. See `dev-team-work-loop/CRON-AUTO-UPDATE-REWRITE.md` for the migration history.
 
-npm outdated @mariozechner/pi-coding-agent --global 2>/dev/null
-# Or check in the MCP server directory:
-cd ~/.hermes/mcp-servers/pi-agent && npm outdated
+```bash
+# Get current installed Pi version
+pi --version
+
+# Verify the global pi binary is the canonical fork — NOT the deprecated one
+ls -la "$(which pi)"
+# The symlink target should include "@earendil-works/pi-coding-agent" in the path.
+# If it includes "@mariozechner": ABORT this skill. Telegram a "MANUAL INTERVENTION
+# NEEDED — global pi still on deprecated fork" alert and STOP. Do NOT auto-install
+# anything to "correct" this — it requires deliberate cleanup per the dev-team
+# migration plan.
+
+# Get latest canonical version
+npm view @earendil-works/pi-coding-agent version
+
+# Also check the global MCP server install (if present)
+[ -d ~/.hermes/mcp-servers/pi-agent ] && cd ~/.hermes/mcp-servers/pi-agent && npm outdated
 ```
 
-Parse output for available updates.
+Parse output for available updates. Refuse to act if the global pi binary still resolves to the deprecated fork.
 
 ### 3. Report
 
@@ -70,8 +82,14 @@ This pulls latest, reinstalls dependencies, restarts gateway automatically.
 
 **Pi update:**
 ```bash
-cd ~/.hermes/mcp-servers/pi-agent && npm update @mariozechner/pi-coding-agent
+# Update the global pi binary (canonical fork only — never @mariozechner)
+npm install -g @earendil-works/pi-coding-agent@latest
+
+# Update the global MCP server install (if present)
+[ -d ~/.hermes/mcp-servers/pi-agent ] && cd ~/.hermes/mcp-servers/pi-agent && npm update @earendil-works/pi-coding-agent
 ```
+
+**NEVER install any package whose npm `deprecated` field is set.** Check before installing: `npm view <package> deprecated` — if it returns a non-empty deprecation message, ABORT and Telegram a "MANUAL INTERVENTION NEEDED — package marked deprecated upstream" alert.
 
 **Post-update verification:**
 ```bash
@@ -85,8 +103,9 @@ hermes skills list  # Verify skills still loaded
 After any update:
 1. Run health_check tool to verify all components still working
 2. If health check fails → roll back:
-   - Hermes: `cd ~/hermes-agent && git reflog` to find prior commit, `git reset --hard {prior}`
-   - Pi: `cd ~/.hermes/mcp-servers/pi-agent && npm install @mariozechner/pi-coding-agent@{prior_version}`
+   - Hermes: `cd /local-AI-Stack/home-hermes/hermes-agent && git reflog` to find prior commit, `git reset --hard {prior}` then re-run `pip install -e .` in the venv
+   - Pi (global binary): `npm install -g @earendil-works/pi-coding-agent@{prior_version}` (NEVER roll back to the deprecated `@mariozechner` package — even on rollback)
+   - Pi (global MCP server, if present): `cd ~/.hermes/mcp-servers/pi-agent && npm install @earendil-works/pi-coding-agent@{prior_version}`
 3. Telegram: "⚠️ Update rolled back — health check failed after update. Prior version restored."
 
 ### 6. Notify

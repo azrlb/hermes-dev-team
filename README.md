@@ -1,4 +1,4 @@
-# Q — AI Dev Team powered by [Hermes](https://github.com/NousResearch/hermes-agent)/[Pi](https://github.com/badlogic/pi-mono/tree/main/packages/coding-agent) + [BMAD Method](https://github.com/bmad-code-org/BMAD-METHOD)
+# Q — AI Dev Team powered by [Hermes](https://github.com/NousResearch/hermes-agent)/[Pi](https://github.com/earendil-works/pi/tree/main/packages/coding-agent) + [BMAD Method](https://github.com/bmad-code-org/BMAD-METHOD)
 
 A portable AI dev team you can drop into any project. Q orchestrates, Pi codes, [BMAD Method](https://github.com/bmad-code-org/BMAD-METHOD) provides the agent framework, [Beads](https://github.com/gastownhall/beads) tracks work.
 
@@ -6,7 +6,7 @@ A portable AI dev team you can drop into any project. Q orchestrates, Pi codes, 
 
 ## How It Works
 
-Built on the **[BMAD Method](https://github.com/bmad-code-org/BMAD-METHOD)** agent hierarchy — Analyst, PM, Architect, SM, QA, Dev, Tech Writer — each phase maps to a BMAD agent role. Q ([Hermes](https://github.com/NousResearch/hermes-agent)) orchestrates the agents, [Pi](https://github.com/badlogic/pi-mono/tree/main/packages/coding-agent) executes the coding.
+Built on the **[BMAD Method](https://github.com/bmad-code-org/BMAD-METHOD)** agent hierarchy — Analyst, PM, Architect, SM, QA, Dev, Tech Writer — each phase maps to a BMAD agent role. Q ([Hermes](https://github.com/NousResearch/hermes-agent)) orchestrates the agents, [Pi](https://github.com/earendil-works/pi/tree/main/packages/coding-agent) executes the coding.
 
 ### Brownfield vs Greenfield (auto-detected)
 
@@ -85,7 +85,7 @@ Loop → next story until bd ready returns zero
 ## Key Design Decisions
 
 - **[BMAD Method](https://github.com/bmad-code-org/BMAD-METHOD)** — agent roles and workflows follow the BMAD framework for structured AI-driven development.
-- **[Pi](https://github.com/badlogic/pi-mono/tree/main/packages/coding-agent) via CLI** — each story runs as a fresh `pi -q` process. Crashes don't affect Q.
+- **[Pi](https://github.com/earendil-works/pi/tree/main/packages/coding-agent) via CLI** — each story runs as a fresh `pi -q` process. Crashes don't affect Q.
 - **Cross-check** — Q independently re-runs tests after Pi claims PASS.
 - **No human dead ends** — every failure path resolves autonomously (escalation → Opus → web research → deep research).
 - **Quinn is a hard gate** — 3-layer parallel adversarial review (Blind Hunter, Edge Case Hunter, Acceptance Auditor) is mandatory before any code ships.
@@ -97,7 +97,7 @@ Loop → next story until bd ready returns zero
 | Component   | Repo                                                                                    | Purpose                               |
 | ----------- | --------------------------------------------------------------------------------------- | ------------------------------------- |
 | Q (Hermes)  | [NousResearch/hermes-agent](https://github.com/NousResearch/hermes-agent)               | Orchestrator — runs BMAD agent phases |
-| Pi          | [badlogic/pi-mono](https://github.com/badlogic/pi-mono/tree/main/packages/coding-agent) | Coding agent (TDD)                    |
+| Pi          | [earendil-works/pi](https://github.com/earendil-works/pi/tree/main/packages/coding-agent) | Coding agent (TDD)                    |
 | Quinn       | Built into vibe-loop                                                                    | 3-layer adversarial reviewer          |
 | BMAD Method | [bmad-code-org/BMAD-METHOD](https://github.com/bmad-code-org/BMAD-METHOD)               | Agent framework, workflows, templates |
 | Beads       | [gastownhall/beads](https://github.com/gastownhall/beads)                               | Git-backed issue tracking (Dolt)      |
