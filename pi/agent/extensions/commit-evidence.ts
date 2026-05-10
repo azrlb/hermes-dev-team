@@ -20,7 +20,7 @@
  * anything" cheats, not to enforce perfect commit discipline.
  */
 
-import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 
 const BD_CLOSE_PATTERN = /\bbd\s+close\s+([A-Za-z0-9]+-[A-Za-z0-9]+)/;
 const BD_UPDATE_CLOSE_PATTERN = /\bbd\s+update\s+([A-Za-z0-9]+-[A-Za-z0-9]+)\s+--status\s*=?\s*closed/;

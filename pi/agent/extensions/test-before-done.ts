@@ -22,7 +22,7 @@
  *     'no test files' | 'failed to collect' | 'failed to load'
  */
 
-import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 
 const TEST_CMD_PATTERNS = [
   /\bvitest\s+(run|--run)\b/i,
@@ -79,7 +79,7 @@ export default function (pi: ExtensionAPI) {
     const isTestCmd = TEST_CMD_PATTERNS.some((re) => re.test(cmd));
     if (!isTestCmd) return undefined;
 
-    const state = getOrCreateState(ctx.sessionId ?? "default");
+    const state = getOrCreateState(ctx.sessionManager.getSessionId() ?? "default");
     state.testRunSeen = true;
 
     // Gather output text
@@ -107,7 +107,7 @@ export default function (pi: ExtensionAPI) {
     const isCompletion = COMPLETION_CMD_PATTERNS.some((re) => re.test(cmd));
     if (!isCompletion) return undefined;
 
-    const state = getOrCreateState(ctx.sessionId ?? "default");
+    const state = getOrCreateState(ctx.sessionManager.getSessionId() ?? "default");
 
     if (!state.testRunSeen) {
       return {

@@ -16,7 +16,7 @@
  * structured file-tool inputs.
  */
 
-import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { isAbsolute, resolve } from "node:path";
 
 const FILE_TOOLS = new Set(["read", "write", "edit"]);
