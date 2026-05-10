@@ -66,7 +66,38 @@
       "last_error": null,
       "deliver": "telegram",
       "origin": null
+    },
+    {
+      "id": "d8149b81e971",
+      "name": "friday-gold-panning",
+      "prompt": "Friday gold-panning session. Goal: convert this week's upstream-release opportunities into actionable next-steps for Bob's apps (Crispi, FlowInCash, plus 2 future apps in pipeline; all depend on LivingApp-Sidecar).\n\nThis is the FOLLOW-UP to the OPPORTUNITY section of cron 770cfee9f064 (auto-update-pi-hermes), which runs Sunday 03:00 and produces a Telegram digest with \"Unlocks: <yes|no|needs-deeper-look>\" tags on each release. Five days later (Friday) you triage the week's opportunities into ship/park/research-deeper.\n\n================================================================\nSTEP 1 — Re-pull the week's upstream release data\n================================================================\n\nIndependent of any prior digest. Pull releases from BOTH upstreams covering the LAST 7 DAYS:\n\nPI:\n  1. Run: npm view @earendil-works/pi-coding-agent versions --json\n  2. Run: npm view @earendil-works/pi-coding-agent time --json\n  3. Filter to versions published in the last 7 days.\n  4. For each version, try gh api repos/earendil-works/pi/releases (filter by tag matching the version) for changelog/notes. Fall back to \"no changelog available\" if missing.\n\nHERMES:\n  1. Run: gh api repos/NousResearch/hermes-agent/releases?per_page=30\n  2. Filter to releases published in the last 7 days.\n  3. Capture title + body for each (truncate body to ~500 chars).\n\nIf NO new releases in the past 7 days for either upstream:\n  Telegram a single short line: \"Gold-panning <YYYY-MM-DD>: no new opportunities this week.\" Write nothing else. Exit.\n\n================================================================\nSTEP 2 — Assess each release through Bob's lens\n================================================================\n\nFor each release, write a 1-2 sentence summary in plain English (not a verbatim changelog). Then assess what it could unlock for Bob's apps:\n\nApps to consider:\n  - Crispi (live)\n  - FlowInCash (live)\n  - 2 future apps in pipeline (per session-handoff context — check hermes-dev-team/dev-team-work-loop/SESSION-HANDOFF-*.md for current pipeline state)\n\nFor EACH release, classify into one of three buckets:\n\n  SHIP — clear opportunity, low effort, names the app + the feature it unlocks.\n    Output: 3-5 line story spec stub:\n      Problem: <what user/business problem does this solve?>\n      Proposed approach: <how the new upstream feature gets used>\n      App target: <Crispi | FlowInCash | future-app-name>\n      Estimated effort: <small | medium | large>\n      ADR 002 gate impact: <none | needs cost-regression check | needs Pact contract update>\n\n  RESEARCH — promising but needs deeper investigation before commitment.\n    Output: 1-paragraph research question + suggested next-session scope (which app, what to investigate, what would unblock a SHIP decision).\n\n  PARK — interesting but not yet useful.\n    Output: 1-line entry \"<release> — parked: <reason>\". Goes into the parked-opportunities log so it can resurface if upstream landscape shifts.\n\nBob's framing — apply rigorously:\n  \"Spine of the business — 4 apps depending on it. Stable, done right, not in a rush.\"\n  Default to PARK or RESEARCH unless the SHIP case is clear AND the change is incremental (not a major refactor).\n  If you're tempted to put something in SHIP that requires touching ADR 005 architecture or the watchdog composition root, downgrade to RESEARCH instead.\n\n================================================================\nSTEP 3 — Write the triage handoff file\n================================================================\n\nWrite the full triage to:\n  /media/bob/C/AI_Projects/hermes-dev-team/dev-team-work-loop/GOLD-PANNING-<YYYY-MM-DD>.md\n\nStructure:\n  # Gold-Panning Triage — <YYYY-MM-DD>\n  ## Sources scanned\n    - Pi: <N versions in last 7 days>\n    - Hermes: <N releases in last 7 days>\n  ## SHIP (<count>)\n    [story stubs, one per item]\n  ## RESEARCH (<count>)\n    [research questions, one per item]\n  ## PARK (<count>)\n    [parked-opportunities log lines]\n  ## Notes\n    [anything else worth flagging — upstream pivot signals, unusual release cadence, etc.]\n\nAfter writing, commit the file to the dev branch on hermes-dev-team:\n  git -C /media/bob/C/AI_Projects/hermes-dev-team add dev-team-work-loop/GOLD-PANNING-<DATE>.md\n  git -C /media/bob/C/AI_Projects/hermes-dev-team commit -m \"docs(gold-panning): <DATE> triage — N SHIP / N RESEARCH / N PARK\"\n  Do NOT push. Bob pushes manually (push to default branch is auto-mode-blocked).\n\n================================================================\nSTEP 4 — Telegram Bob a concise summary\n================================================================\n\nSingle Telegram message, exactly this shape:\n\n🪙 Gold-panning <YYYY-MM-DD>\n  SHIP (<count>): <comma-separated short titles, max 80 chars total>\n  RESEARCH (<count>): <comma-separated short titles, max 80 chars total>\n  PARK (<count>): <comma-separated short titles, max 80 chars total>\n\n  Full triage: dev-team-work-loop/GOLD-PANNING-<DATE>.md (committed to dev branch, not pushed)\n\n  Next: open this with the BMAD story-creation skill to convert SHIP items into stories.\n\nIf only PARK items: short message \"🪙 Gold-panning <DATE>: <count> items parked, nothing actionable this week.\"\n\n================================================================\nCONSTRAINTS (NON-NEGOTIABLE)\n================================================================\n\n- NEVER edit production code in LivingApp-Sidecar or LivingApp-Hermes. This session is RESEARCH and TRIAGE only.\n- NEVER auto-bump pins. Surfaces 3+4 are alert-only per ADR 002 (see LivingApp-Sidecar/docs/adr/002-upstream-keep-current-strategy.md, including the dev-tier addendum).\n- Bob is non-technical. Frame all triage outputs in business/feature terms (what does it enable for users / which app benefits / what's the customer-visible change), NOT code/implementation terms.\n- Telegram message must be under ~400 chars total — Bob reads on phone.\n- Story stubs in the handoff file are SEEDS for next BMAD session, not finished specs. Don't over-design.\n\nIf anything blocks execution (gh not available, npm registry down, repo path missing), Telegram a single line \"🪙 Gold-panning <DATE>: BLOCKED — <reason>\" and exit.",
+      "skills": [],
+      "skill": null,
+      "model": null,
+      "provider": null,
+      "base_url": null,
+      "schedule": {
+        "kind": "cron",
+        "expr": "0 10 * * 5",
+        "display": "0 10 * * 5"
+      },
+      "schedule_display": "0 10 * * 5",
+      "repeat": {
+        "times": null,
+        "completed": 0
+      },
+      "enabled": true,
+      "state": "scheduled",
+      "paused_at": null,
+      "paused_reason": null,
+      "created_at": "2026-05-10T15:29:51.481646-07:00",
+      "next_run_at": null,
+      "last_run_at": null,
+      "last_status": null,
+      "last_error": null,
+      "deliver": "telegram",
+      "origin": null
     }
   ],
-  "updated_at": "2026-03-31T19:42:55.047961-07:00"
+  "updated_at": "2026-05-10T15:29:51.481682-07:00"
 }
