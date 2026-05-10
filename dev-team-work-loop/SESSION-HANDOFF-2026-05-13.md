@@ -63,11 +63,38 @@ Steps taken:
 4. **Checksum + createdAt are Platform-derived.** Sidecar does NOT compute or send them; Postgres `NOW()` and `gateway/src/db.ts:226-228` own those.
 5. **trace_id is in the schema but excluded from the checksum.** Lets backfill (Story 1.9) happen without invalidating prior rows' tamper-detection.
 
-## Known follow-ups (small)
+## Known follow-ups
 
-- **Sidecar `/ready` endpoint returns the wrong handler.** External `curl https://livingapp-sidecar-production.up.railway.app/ready` returned the catch-all "Sidecar is running" plain-text response, not the structured ready-check from Story 1.10. The `/health` endpoint works correctly. Probably an Express route ordering issue or path mismatch; worth a 10-minute look. NOT blocking — Railway healthchecks aren't wired yet so this isn't actively breaking deploys.
-- **Gateway's `tsx`-at-runtime** could be replaced with a `tsc` build step for faster cold-starts.
-- **Old `SIDECAR_JWT_SECRET` on the sidecar service** can be deleted in a future cleanup.
+### Highest priority — Hermes integration: research-first redesign
+
+**Status:** the Sidecar's Nous Hermes integration (Story 1.18) does not work in production. Code shipped + 10 supervisor tests pass + the `/ready` endpoint correctly reports it as unhealthy. But during the wrap-up of this session, we discovered the integration was built on partially-wrong assumptions about how `hermes-agent` actually deploys. **We do not yet know enough to fix it correctly.** Next session must do docs-first research before any code changes.
+
+**What's verified-wrong:** spawn command (`python -m hermes_agent` → should be `hermes gateway start`), port default (8765 → 8642), missing env vars (`API_SERVER_ENABLED=true`, `API_SERVER_PORT`, `API_SERVER_HOST`), missing config files (`~/.hermes/config.yaml`, `~/.hermes/.env`).
+
+**What's unknown — research must answer with citations:**
+1. **Daemonization model.** Hermes has a PID file at `~/.hermes/gateway.pid` and references `systemctl`/`launchctl`. Does `hermes gateway start` fork a daemon and exit? If so, the supervisor's spawn-and-watch-PID model needs adjustment (e.g., poll the PID file, or check for a `--foreground` flag).
+2. **Persistent state.** SessionStore + pairing are SQLite under `~/.hermes/`. Railway containers are ephemeral → need a Railway volume mount or external persistence.
+3. **API_SERVER_KEY** — docs say required for non-loopback only. We bind loopback (`127.0.0.1`), so probably not needed — but verify.
+4. **Existing stub investigation.** A `hermes-sidecar/` Python directory exists in the `LivingApp-Platform` repo (with `main.py` + `gateway/client.py` + `config/settings.py` per `__pycache__` artifacts). May be a half-finished wrapper from a previous attempt. Inspect before designing from scratch — could be salvageable or could be a wrong-turn to remove.
+
+Hermes-agent is the right tool — it has multiple deployment modes (API server, ACP, MCP, library) supporting non-personal-assistant use cases. The shape (HTTP server on localhost + supervisor) is supported. Only the specific deploy mechanics need research.
+
+**Verified Hermes docs read this session (seed for next session):**
+- https://hermes-agent.nousresearch.com/docs/guides/python-library
+- https://hermes-agent.nousresearch.com/docs/user-guide/features/api-server
+- https://hermes-agent.nousresearch.com/docs/developer-guide/gateway-internals
+
+**Acceptance criteria for "we know how to deploy this":** a research story produces a verified deploy plan covering all 4 unknowns above with citations (doc URL + quote OR successful local-test demonstration). Only after that lands should Story 1.18 be rewritten with the corrected deploy and `nous-supervisor.ts` updated.
+
+**Companion artifacts:** updated warnings on `architecture.md` (Sidecar↔Nous Hermes bullet) and Story 1.18 spec; companion memory `~/.claude/projects/.../memory/feedback_verify_external_apis.md`. Sidecar Dockerfile already has a `python -c "from run_agent import AIAgent"` smoke check that proves the install works (passes today) — that's the safety net for "install broke" but not for "deploy model wrong."
+
+**Stub to inspect:** there's a `hermes-sidecar/` Python directory in the `LivingApp-Platform` repo with `main.py` + `gateway/client.py` + `config/settings.py` (per `__pycache__` artifacts). Could be a half-finished wrapper from a previous attempt. Worth inspecting before designing from scratch.
+
+### Smaller follow-ups
+
+- **Sidecar GitHub auto-deploy is not wired.** The `livingapp-sidecar` Railway service has `source: {repo: null}`. Every push for the past 2 months never auto-deployed. Tonight's `railway up` was the first fresh build in months. Connect via Railway UI: Service → Settings → Source → Connect Repo → `azrlb/LivingApp-Sidecar` → main.
+- **Gateway `tsx`-at-runtime** could be replaced with a `tsc` build step for faster cold-starts.
+- **Old `SIDECAR_JWT_SECRET` on the sidecar service** is dead config (was the pre-RS256 HMAC secret). Safe to delete.
 - **Pre-existing test failures on Platform** (`tests/graduation/*.test.ts` + `tests/builder/g1-request-validator.test.ts`) — missing `await` on `getAuditLogs()` and a schema-type mismatch. Verified identical on pre-change tip; not in scope.
 
 ## Next action when you're ready
