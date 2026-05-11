@@ -155,7 +155,13 @@ Both fixes propagated to BOTH the repo and the live `~/.hermes/cron/jobs.json`. 
 - These were set via `railway variables --set ... --skip-deploys` (no immediate redeploy). Will take effect on next Sidecar deploy.
 - Both required by `src/env.ts` `validateEnv()` once Session 5 wires it into watchdog `main()`.
 
-### ⚠ Action item for Bob — verify HERMES_API_KEY storage form
+### ✅ RESOLVED 2026-05-16 — HERMES_API_KEY is a true Railway reference (definitively tested by live rotation)
+
+Final state: Bob deleted the literal-stored `HERMES_API_KEY`, re-created it via Railway's explicit Reference picker UI on the dashboard, then rotated `API_SERVER_KEY` on the Hermes service to invalidate two leaked-in-transcript values. CLI verification confirmed `HERMES_API_KEY` on Sidecar auto-rotated to the new value (prefix changed, length 96 ✓). When future rotations happen, propagation is automatic.
+
+Resolution path was painful: typing `${{...}}` syntax into a value field stores as LITERAL even though Railway's dashboard renders it back as the syntax AND auto-resolves it on the copy button — both misleading signals. Only definitive test is rotation. Saved as memory `reference_railway_cli_quirks.md` so future sessions don't re-flail.
+
+### Original action item (resolved)
 
 When I ran `railway variables --service livingapp-sidecar` to verify the set succeeded, the listing showed the key's RESOLVED value (a hex string fragment) rather than the reference syntax. Two possibilities:
 1. **Stored as Railway reference** (`${{livingapp-hermes.API_SERVER_KEY}}`) — the CLI's listing always shows resolved values, but the underlying definition is the reference. Auto-rotation would work: when you rotate `API_SERVER_KEY` on the Hermes service, `HERMES_API_KEY` on Sidecar updates automatically.
