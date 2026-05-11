@@ -251,3 +251,54 @@ Session 5 cleanup cutover completed in-session and shipped to production live.
 - Cosmetic — delete the dead `hermes/` directory in the Sidecar repo (was config files for the deleted embedded-Hermes setup; functionally inert since the Dockerfile no longer COPYs it)
 
 After Session 8 ships, all 3 of Murat's load-bearing conditions are met and Sidecar v2 is structurally complete. The spine is ready for the 4 dependent apps Bob is building.
+
+---
+
+## 🎯 PROMOTED FROM ROADMAP — high priority next session
+
+Bob asked at session-end whether the Sidecar+Platform are ready for the 4 dependent apps. Honest answer was: **functionally yes, hardened-against-silent-breakage no — Sessions 6 and 8 close that gap.** Promoting both into the "do this next" tier so they don't sit in the roadmap section.
+
+### Session 6 — Pact contract tests on Sidecar↔Hermes (Murat's Condition 1, NON-NEGOTIABLE)
+
+**Why it matters in Bob's terms:** This is the test that would have caught the 2-month broken Hermes integration. Without it, an upstream Hermes change can silently break the Sidecar↔Hermes wire shape and the test suite won't notice. With it, the Hermes service's CI fails the build before the breakage ships to production.
+
+**Scope:**
+- Consumer side (Sidecar `tests/pact/`): one Pact test per Sidecar→Hermes endpoint, describing request shape (headers, body) and expected response shape. Generates `pacts/livingapp-sidecar-livingapp-hermes.json`.
+- Provider side (LivingApp-Hermes repo): pull pact file via GitHub Actions, run provider verification (boot the service, replay each pact request, assert response matches contract). Build fails on contract drift.
+- Library: `@pact-foundation/pact` (per architecture doc CI1 decision).
+- Pact file location: in-repo for v1 (per architecture doc CI2 decision); migrate to PactFlow if/when contract count grows.
+
+**Estimate:** ~60-90 min, similar shape to Sessions 4+5. Mostly mechanical — write the contract, scaffold the verification job.
+
+### Session 8 — Post-deploy smoke vs Railway URLs (Murat's Condition 3, NON-NEGOTIABLE)
+
+**Why it matters in Bob's terms:** Today, every test runs against localhost. Railway env-var misses, routing issues, and DNS/TLS issues are invisible to the local test suite. This job catches them BEFORE you discover the production deploy is broken from a real user request. The 19h `Nous supervisor: failed` saga that motivated the Session 5 cutover would have been caught Day 1 by this job.
+
+**Scope:**
+- `.github/workflows/post-deploy-smoke.yml` runs after each Railway deploy (triggered by Railway webhook OR scheduled cron after deploy).
+- Probes: Sidecar `/ready` 200, Hermes `/health` 200 (with Bearer API_SERVER_KEY), end-to-end audit-emit test (drive a real WS request, verify audit row lands in postgres-LVV via Gateway).
+- Telegram alert on failure.
+
+**Estimate:** ~30-45 min — the workflow file is short; the end-to-end test step is the meatiest piece.
+
+### Recommended order
+
+1. **Session 6 first** — bigger leverage. Contract tests catch the recurring failure class regardless of how often you deploy.
+2. **Session 8 second** — fast follow-on. Once contracts protect the wire, smoke tests protect the deploy.
+
+After both: the Sidecar↔Hermes boundary has both compile-time guarantees (TypeScript) AND wire-time guarantees (Pact) AND deploy-time guarantees (smoke job). The architecture is then matched by the verification.
+
+---
+
+## On LivingApp-Platform (Gateway)
+
+Bob asked whether the Hermes/Pi research findings impact Platform's effectiveness. Verified at session-end:
+
+**Direct architectural/code impact: ZERO.** Platform's `package.json` has no `@earendil-works/pi-coding-agent`, no `hermes-agent`. Its deps are `express` + `pg` + `jsonwebtoken`. Per `_ECOSYSTEM/DO-NOT-REINVENT.md`, Platform is dumb infrastructure (Gateway + Postgres-LVV writes + JWT verification); it never touches Pi or Hermes upstream. The Sidecar v2 redesign happened entirely on the Sidecar side of the JWT boundary.
+
+**Indirect lessons that COULD apply to Platform** (low priority, none blocking):
+1. **Boot-time env validation** — Sidecar now has `validateEnv()` via zod (Murat's Condition 2). Platform should mirror this for `JWT_PRIVATE_KEY_*`, `DATABASE_URL`, etc. Today there's no zod dep in Platform's package.json, so this isn't done yet. Worth a small story when convenient.
+2. **Pact contract tests on Sidecar↔Gateway** — the same Condition 1 thinking that motivates Session 6 also applies to the Sidecar↔Gateway boundary. Different upstream, same risk class. Could fold into Session 6 or do separately later.
+3. **Post-deploy smoke for Gateway** — the Session 8 workflow can probe Gateway's endpoints too (audit-emit roundtrip would naturally hit Gateway). Mostly free if Session 8 ships.
+
+**Net:** Platform doesn't need any upstream-research-driven changes. The hardening lessons from Sidecar v2 are portable but not urgent.
