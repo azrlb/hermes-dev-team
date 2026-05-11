@@ -302,3 +302,41 @@ Bob asked whether the Hermes/Pi research findings impact Platform's effectivenes
 3. **Post-deploy smoke for Gateway** — the Session 8 workflow can probe Gateway's endpoints too (audit-emit roundtrip would naturally hit Gateway). Mostly free if Session 8 ships.
 
 **Net:** Platform doesn't need any upstream-research-driven changes. The hardening lessons from Sidecar v2 are portable but not urgent.
+
+---
+
+## 🔍 PARALLEL WORK — review FlowInCash-Core code from Hermes-dev Kanban flow
+
+Bob mentioned at session-end (2026-05-10 evening): in parallel with this session's Sidecar v2 work, he's been **running live tasks through the Hermes-dev Kanban + the new Hermes dev flow against FlowInCash-Core.** That work happened outside the Sidecar/Platform/Hermes scope of today's commits, but it produced code that needs production-readiness review before it can ship.
+
+### What's needed (tomorrow)
+
+1. **Inventory the work.** Look at `/media/bob/C/AI_Projects/FlowInCash-Core` for recent commits / open PRs / Kanban-board output. Cross-reference with the Hermes-dev Kanban runtime (the one that landed in Hermes v2026.5.7 "The Tenacity Release" — durable kanban, heartbeat, reclaim, zombie detection, per-task retries; surfaced as a "Unlocks: yes" item in the OPPORTUNITY digest above) to see what the dev-flow agents actually produced.
+2. **Production-readiness review of each artifact.** Standard checklist:
+   - Does it pass the existing test suite?
+   - Does it have new tests that exercise the change?
+   - Does it touch any production surfaces governed by ADR 002 (cost-regression gate, pinning) or ADR 005 (Sidecar v2 contracts)?
+   - Are there silent-failure modes (the recurring class that motivated Sidecar v2 — missing env vars, wrong fork pulled, etc.)?
+   - Does it match the FlowInCash-Core architecture conventions (per `_bmad/`)?
+3. **Pull out specific tasks for adversarial review.** Bob suggested running them past **BMAD Quinn** for an outside read.
+
+### Note on the BMAD reviewer
+
+Bob said "BMAD Quinn" — that name doesn't appear in the current resolved BMAD agent roster (Mary/Paige/John/Sally/Winston/Amelia/Murat). Quinn IS referenced in `LivingApp-Sidecar/docs/adr/002-upstream-keep-current-strategy.md` §References as a past party-mode participant ("Winston + Mary + Murat + John + Quinn + Amelia + SM"), so Quinn likely existed in an earlier BMAD config layer that's no longer surfaced.
+
+**Three concrete options for the review work tomorrow:**
+- **Murat (`bmad-tea`)** — Master Test Architect and Quality Advisor; fit for "is this production-ready?" risk-calc framing. Closest analog to what Bob remembers about Quinn.
+- **The `bmad-code-review` skill** — runs adversarial review with parallel layers (Blind Hunter, Edge Case Hunter, Acceptance Auditor). Different shape — multi-pass adversarial review of specific code, not a persona conversation.
+- **Re-install Quinn** — if Bob has a saved Quinn customization from an earlier BMAD install he wants to pull back, the `bmad-customize` skill can override / add agents.
+
+Recommended: **Murat for the persona review + `bmad-code-review` skill for the adversarial pass on specific artifacts.** Two complementary lenses; both already available without reinstalling anything.
+
+### Handoff item for tomorrow's session opener
+
+Before doing anything else with FlowInCash-Core, run:
+```
+git -C /media/bob/C/AI_Projects/FlowInCash-Core log --since "2026-05-09" --oneline
+git -C /media/bob/C/AI_Projects/FlowInCash-Core status -s
+gh pr list --repo <flowincash-core-repo>
+```
+to enumerate what the Kanban flow actually produced. That's the input list for the review pass.
