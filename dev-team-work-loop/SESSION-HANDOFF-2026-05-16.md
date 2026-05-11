@@ -215,3 +215,39 @@ Three files added to `~/.claude/projects/-media-bob-C-AI-Projects-hermes-dev-tea
 3. **Investigate the 6-profiles-all-identical pattern** carried forward from earlier handoffs.
 
 Recommendation: Session 5. The Hermes integration is now structurally sound; finishing the cleanup removes the visible "v1 still in place" weight from the codebase and unblocks the rest of the v2 plan.
+
+---
+
+## ✅ Session 5 done + deployed — addendum 2026-05-10 18:00 PT
+
+Session 5 cleanup cutover completed in-session and shipped to production live.
+
+**PRs merged:**
+- **#2** — Session 5 cleanup cutover (-4,500 net lines: nous-supervisor / nous-client / v1 pi-client subprocess machinery deleted; pi-client-v2 renamed to canonical pi-client; watchdog composition root rewritten with validateEnv + hermes-client; Dockerfile 199 → 59 lines).
+- **#3** — Dockerfile hotfix (`groupadd: GID '1000' already exists` build error; switched from `groupadd/useradd sidecar` to `USER node` since node:22-slim ships its own non-root user at UID/GID 1000).
+
+**Production state:**
+- `livingapp-sidecar` deployment `ef0ed872-c5e9-4c90-bf92-7f622fd33cff` SUCCESS at 18:00:23 PT.
+- `/ready` returns HTTP 200 with `{"ready":true,"draining":false,"checks":{"hermes":"ok","gateway":"ok","budget":"ok"}}` — confirms the Session 5 health-endpoint rename (`nous` → `hermes`) is live, both circuit breakers report healthy.
+- Boot logs include `[Watchdog] Hermes client: ok (http://livingapp-hermes.railway.internal:8642)` — the new composition-root output. Zero `Nous supervisor` references; the subprocess machinery is gone in production.
+- The 19+ hour `Nous supervisor: failed` saga that motivated ADR 005 is over.
+
+**Test suite:** 245 pass / 1 skip / 2 todo on Sidecar/main (was 323; -78 from deleted suites; zero functional regressions).
+
+**Two friction items discovered + worth flagging for next session:**
+1. **Railway GitHub auto-deploy is NOT wired up for `livingapp-sidecar`.** Merging a PR doesn't trigger a redeploy — had to invoke `railway up` manually twice. Worth wiring up the GitHub integration so future Sidecar PRs auto-deploy on merge. Small Railway dashboard config (Service → Settings → Source).
+2. **Railway dashboard "Redeploy" button rebuilds from a stale source snapshot, not from the latest GitHub main.** The first attempted deploy (45439548 SUCCESS) actually rebuilt the v1 image — same broken `Nous supervisor: failed` code — because Bob clicked Redeploy after the first failure. The fix was to run `railway up` from local main again. Lesson: prefer "Deploy" or `railway up`, avoid "Redeploy" unless you specifically want to re-run the same image.
+
+**Memory updates this session (2026-05-16 + 2026-05-10 deploy session):**
+- `user_solo_creator_no_code.md` — Bob's profile (non-technical solo creator)
+- `feedback_decide_for_bob.md` — AI team owns recommendations
+- `reference_local_cron_runner.md` — `hermes cron` CLI is the runner
+- `reference_railway_cli_quirks.md` — CLI shows resolved values; references via dashboard only
+
+**Sidecar v2 roadmap remaining:**
+- Session 6 — Pact contract tests on Sidecar↔Hermes (Murat's Condition 1)
+- Session 7 — Spec updates (Story 1.18 superseded note, sprint-status.yaml)
+- Session 8 — Post-deploy smoke vs Railway URLs (Murat's Condition 3)
+- Cosmetic — delete the dead `hermes/` directory in the Sidecar repo (was config files for the deleted embedded-Hermes setup; functionally inert since the Dockerfile no longer COPYs it)
+
+After Session 8 ships, all 3 of Murat's load-bearing conditions are met and Sidecar v2 is structurally complete. The spine is ready for the 4 dependent apps Bob is building.
