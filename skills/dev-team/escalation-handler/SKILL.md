@@ -186,12 +186,23 @@ If a recovery task with the same title prefix already exists in the tenant (any 
    Tagged for next session continuation."
    ```
    Tag issue with `needs-deep-research-round-2` so the next session continues from accumulated knowledge, not from scratch.
-5. Telegram (notification only, not asking for decision):
+5. **CALL FOR HELP (Hermes intervention):** After deep research fails, send a structured Telegram ping that a watchdog cron job can detect and act on:
    ```
-   🔬 {id} — Deep Research attempted. {outcome}.
-   Root cause: {one_line_summary}
-   Next session will continue from findings.
+   🆘 PIPELINE STUCK — {project_name}
+   Issue: {id} — {title}
+   Blocker: {blocker_type} — {one_line_summary}
+   Root cause: {root_cause_analysis}
+   Approaches tried: {list}
+   Pipeline: {cron_job_id}
+   Workdir: {project_workdir}
+   
+   Hermes: fix this issue and re-run the pipeline.
    ```
+   Also write a marker file to disk so the watchdog can detect stalled pipelines without parsing Telegram:
+   ```bash
+   echo '{"issue_id":"{id}","blocker_type":"{blocker_type}","root_cause":"{root_cause}","pipeline_job_id":"{cron_job_id}","workdir":"{workdir}","timestamp":"{ISO}"}' > {workdir}/_output/needs-hermes-fix.json
+   ```
+6. **Do NOT re-trigger the pipeline automatically.** The watchdog or Hermes will re-trigger after the fix lands. This prevents infinite loops where the pipeline hits the same error repeatedly.
 
 ## Post-Escalation
 
