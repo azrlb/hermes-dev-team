@@ -1050,13 +1050,24 @@ This captures everything the vibe-loop session produced. **Additionally, identif
 **Step 2 — Collect spec context:**
 Gather all story files from `docs/stories/` that were part of this session (match by beads labels or epic tag). These provide the acceptance criteria Quinn reviews against.
 
-**Step 3 — Invoke `bmad-code-review` skill with three parallel review layers:**
+**Step 3 — Load the AI-coder anti-patterns checklist:**
 
-Hermes invokes the code review skill (or runs the review layers directly if the skill is unavailable):
+Read `skills/dev-team/vibe-loop/references/ai-coder-antipatterns.md` and load its full content into the review context. Every reviewer below receives this file as part of its brief. The checklist is a catalog of known AI-coder failure modes (non-timing-safe HMAC compares, HMAC-over-restringified-body, wrong-library-exception catches, fake-passing tests, scope-drift commits, etc.) — each entry tells the reviewer exactly what pattern to grep for and what the right code looks like. This is mandatory — these are the bugs Pi statistically produces that pass naive test suites.
 
-- **Blind Hunter** — receives diff + full source files ONLY. No project context, no spec. Finds bugs, security issues, logic errors purely from the code. Invoke via `bmad-review-adversarial-general`.
-- **Edge Case Hunter** — receives diff + full source files + project read access. Walks every branching path and boundary condition. Reports unhandled edge cases only. Invoke via `bmad-review-edge-case-hunter`.
-- **Acceptance Auditor** — receives diff + full source files + story spec files. Checks: AC violations, spec deviations, missing implementation, contradictions. Reviews against every AC in every story file.
+When a NEW class of AI-coder failure shows up in Quinn's findings, the post-review fix-loop MUST append it to the anti-patterns file before the session ends. The file grows monotonically with real incidents.
+
+**Step 4 — Invoke `bmad-code-review` skill with three parallel review layers:**
+
+Hermes invokes the code review skill (or runs the review layers directly if the skill is unavailable). Each layer receives the anti-patterns checklist in addition to its specific inputs:
+
+- **Blind Hunter** — receives diff + full source files + anti-patterns checklist ONLY. No project context, no spec. Finds bugs, security issues, logic errors purely from the code. Invoke via `bmad-review-adversarial-general`.
+- **Edge Case Hunter** — receives diff + full source files + anti-patterns checklist + project read access. Walks every branching path and boundary condition. Reports unhandled edge cases only. Invoke via `bmad-review-edge-case-hunter`.
+- **Acceptance Auditor** — receives diff + full source files + anti-patterns checklist + story spec files. Checks: AC violations, spec deviations, missing implementation, contradictions. Reviews against every AC in every story file.
+
+**Commit-claim audit (every reviewer, every commit):** For each commit in the session's diff, the reviewer must compare the commit MESSAGE against the actual changes. Flag any of:
+- Title says "X complete" / "X done" while body admits partial state ("still fail", "still need", "TODO"). See AP-COMMIT-1.
+- Files changed extend beyond the commit's stated subject (e.g., a "Postpone Stack" commit also adding a new top-level package). See AP-COMMIT-2.
+- Body cites "all tests pass" as primary evidence — this gets low weight; reviewer must independently confirm at least one test injects a real external value, not a synthetic. See AP-COMMIT-3.
 
 **Subagent failure handling — escalation chain (MANDATORY):**
 
@@ -1069,7 +1080,7 @@ If ANY review subagent fails (tool errors, timeout, empty results), escalate —
 
 **ABSOLUTELY FORBIDDEN: Simulating, fabricating, or generating placeholder findings.** Writing JavaScript scripts that produce "simulated" reviews, generating findings without reading the actual code, or any form of fake review output is a PIPELINE VIOLATION. This is a HARD GATE — the purpose is to catch real bugs. Fabricated findings are worse than no findings because they create false confidence. If you cannot review the code, say so and HALT. Never pretend the review happened.
 
-**Step 4 — Triage findings:**
+**Step 5 — Triage findings:**
 
 Classify each finding:
 - **Critical/High** → file as P0 beads issue tagged `quinn-review`
@@ -1077,7 +1088,7 @@ Classify each finding:
 - **Low/Defer** → file as P2 beads issue tagged `quinn-review`
 - **Dismiss** → drop (false positive, pre-existing, handled elsewhere)
 
-**Step 5 — Fix loop:**
+**Step 6 — Fix loop:**
 
 If P0 or P1 findings were filed:
 1. Run `bd ready --json` — Quinn review issues are now in the queue
@@ -1090,16 +1101,23 @@ If P0 or P1 findings were filed:
 
 P2 findings remain open for future sessions — they're real but not blocking.
 
-**Step 6 — Report:**
+**Step 7 — Anti-patterns catalog maintenance:**
+
+If Quinn produced ANY finding that does NOT match an existing entry in `references/ai-coder-antipatterns.md`, the orchestrator MUST append a new entry before closing this phase. Shape: name + pattern to grep + why it's wrong + right pattern + how Quinn checks. Cite the incident (commit SHA / file path). The catalog is the institutional memory — without this step, the same bug recurs every cycle.
+
+**Step 8 — Report:**
 ```
 Quinn Adversarial Review — Complete
 Findings: {total} ({critical} critical, {high} high, {medium} medium, {low} low)
 Fixed this session: {fixed_count}
 Deferred (P2): {deferred_count}
 Dismissed: {dismissed_count}
+New anti-patterns captured: {count} (see references/ai-coder-antipatterns.md)
 ```
 
 **Why not per-story:** Running three adversarial reviewers per story is expensive and catches less — many composition errors only appear when multiple stories interact. Running once after the full implementation sees the complete picture, like we just demonstrated with the Railway migration review.
+
+**Kanban-flow Quinn gate (NON-NEGOTIABLE):** Phase 10c is mandatory for vibe-loop sessions, but the failure class also applies to Hermes-dev-Kanban work (the durable kanban flow shipped in Hermes v2026.5.7 "Tenacity"). Any commit produced by a Kanban-driven coding cycle must run THIS phase before landing on `main`. Concretely: a Kanban worker that produces commits MUST either (a) trigger Phase 10c on its batch before push, or (b) push to a feature branch and require a manual `dev-team/vibe-loop` Phase-10c run on the PR before merge. Direct-to-main pushes from Kanban that bypass Quinn are a workflow violation — the spine of the business cannot trust unreviewed AI-coded changes, regardless of which orchestrator produced them.
 
 ---
 
@@ -1293,9 +1311,59 @@ Standard work-loop error handling applies:
 | Health check fails post-deploy | Retry after 60s. If still failing, Telegram with URL + logs |
 | Database migration fails on Railway | Telegram with migration error, halt. Do NOT proceed with broken DB |
 
-### Resumption
+### Resumption — "Resume Where You Left Off"
 
-If the pipeline is interrupted (crash or manual stop):
+> **Reference:** See `references/resumption-checklist.md` for the quick-reference checklist and common scenarios.
+
+When the user says "resume", "pick up where we left off", "continue from before", or similar, follow this protocol IN ORDER. Do NOT start with session history search — that's a last resort.
+
+**Step 1: Check git status (MOST RELIABLE indicator of interrupted work)**
+```bash
+cd {project_root}
+git status --short
+git diff --stat
+```
+- Uncommitted changes = work was in progress when the session ended
+- Read the diffs to understand what was being changed
+- This is the single most reliable signal — session history summaries are high-level and may miss the specific in-progress work
+
+**Step 2: Check recent commits**
+```bash
+git log --oneline -10 --format="%H %ai %s"
+```
+- Shows what was recently completed
+- Helps understand the trajectory of work
+
+**Step 3: Check beads for in_progress issues**
+```bash
+bd list --status=in_progress 2>/dev/null
+bd ready --json 2>/dev/null | head -20
+```
+- `in_progress` = work claimed but not completed
+- `ready` = next items in queue
+
+**Step 4: THEN search session history (last resort)**
+- Session search returns high-level summaries, not the specific in-progress work
+- Useful for understanding context, not for finding what was being done
+- Summaries may be stale or compressed — don't trust them as the primary source
+
+**Step 5: Present findings and ask what to do**
+```
+Found uncommitted changes in:
+- {file1} — {brief description of changes}
+- {file2} — {brief description}
+
+Recent commits show {pattern of work}.
+
+Would you like me to:
+1. Continue the in-progress work
+2. Commit what's there and move on
+3. Something else
+```
+
+**Why this order matters:** Session history compression (LCM) loses detail over time. Git state is immutable and always accurate. The user's frustration ("Your context is way late") comes from relying on session summaries instead of actual project state.
+
+**Pipeline-specific resumption (when resuming a vibe-loop run):**
 1. Check `_output/` for existing artifacts — resume from the last incomplete phase
 2. Check Beads for filed issues — if issues exist, skip to dev (Phase 10)
 3. If mid-implementation, work-loop handles its own resumption via checkpoints
@@ -1303,6 +1371,43 @@ If the pipeline is interrupted (crash or manual stop):
 5. If `_output/deployment.md` exists, skip to report (Phase 13)
 
 ---
+
+## Pre-Pipeline Health Audit
+
+Before scheduling overnight work or running vibe-loop on a brownfield project, run a **project health audit** to compare beads tracking against git reality. This catches silent-failure gaps, untracked work, and stale epic status.
+
+See `references/project-health-audit.md` for the full audit methodology.
+
+Key steps: (1) beads status snapshot, (2) git log vs beads prefix comparison, (3) silent-failure window detection, (4) epic status classification per story, (5) test suite health, (6) branch status. Output a summary table with recommendations for what to tackle next.
+
+---
+
+## Overnight Pipeline Scheduling
+
+When scheduling multiple vibe-loop pipelines as overnight cron jobs:
+
+- **Stagger by 6+ hours.** Two vibe-loops running simultaneously compete for CPU, memory, and git lock contention. Schedule the shorter/simpler job first, the larger one later.
+- **Example:** Crispi Family Plan at 10 PM, FlowInCash-Core Epic 10 at 6 AM — not both at 10 PM.
+- **Each pipeline should `cd` to its project directory** inside the cron prompt (not rely on workdir alone — `setsid` sessions may inherit wrong cwd).
+- **Telegram delivery** — both pipelines deliver to the same channel. Staggering prevents interleaved progress messages.
+
+## Escalation Handling (already built-in)
+
+The vibe-loop has a comprehensive escalation system via `dev-team/escalation-handler`. Key facts:
+
+- **5 recovery branches:** STORY_AMBIGUITY → BMAD rewrite, TEST_MISMATCH → Quinn test review, MISSING_DEPENDENCY → prerequisite builder, INFRA → automated fix + deep research, HARD_PROBLEM → deep research & rearchitect.
+- **Critical rule:** "Do NOT escalate to Bob — Bob is not a developer and cannot fix code issues."
+- **Quinn Review escalation chain:** retry with parent model → retry with deepseek-r1:32b → run inline → HALT.
+- **E2E validation:** health-fix skill handles test failures. Critical failures (auth, data integrity, payment) halt; non-critical proceed with warnings.
+- **Block-watcher** monitors kanban for blocked tasks and spawns `escalate-<id>` tasks automatically.
+
+If a pipeline appears to stall on a blocked task, check whether the block-watcher was running and whether the escalation-handler classification matched the block reason.
+
+## Overnight Pipeline Monitoring
+
+When running vibe-loop via overnight cron jobs, use the pipeline watchdog pattern to detect and recover from stalls autonomously. See `references/pipeline-watchdog.md` for the full setup — marker files, watchdog cron job, and recovery flow.
+
+Key flow: pipeline hits HARD_PROBLEM → deep research fails → escalation-handler writes `_output/needs-hermes-fix.json` → watchdog detects → Telegram alert → Hermes fixes + re-triggers.
 
 ## Dependencies
 
