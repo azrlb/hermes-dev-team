@@ -249,6 +249,71 @@ class FooService {
 
 ---
 
+### AP-TEST-6 — AC-test mapping requires real-layer coverage, not mocked fetch
+
+**Pattern:** Every acceptance criterion has at least one test file that claims to cover it — but the test mocks the HTTP/network layer (`fetch`, `axios`, `axios-mock-adapter`, MSW) so thoroughly that the real route handler, middleware, and DB path are never exercised. The test passes. The actual flow is broken.
+
+**Why it's wrong:** Mocked-fetch tests validate the client's state transitions against synthetic responses — they confirm "if the server returns X, the UI does Y." They do NOT confirm "when the user clicks Submit, the server actually receives the payload, validates it, persists it, and returns X." The Crispi-app-2x20.9 incident (2026-05-12) demonstrated this directly: all Journey-1 component tests passed with mocked `fetch` returning success. At runtime, `handleConfirmConstraints` never called `submitProfile` and the server never received the profile. The profile was silently lost.
+
+**Right pattern:**
+- For each AC, at least ONE test must exercise the REAL processing layer (actual route handler → service → DB, or at minimum a supertest/integration call against the Express app).
+- Mocked-fetch tests are acceptable for UI-only concerns (button state, error message rendering) but are NEVER sufficient evidence that a data flow works end-to-end.
+- When mapping ACs to tests in the traceability matrix, mark each test as `REAL` or `MOCK`. An AC with only `MOCK`-layer tests is a coverage gap.
+
+**How Quinn checks:**
+1. For each AC in the story spec, list the test files that claim to cover it.
+2. For each test file, check whether it mocks the network/HTTP layer (`jest.mock`, `axios-mock-adapter`, `msw`, manual `fetch` stubs).
+3. If ALL tests for an AC use mocked network: flag as P0 finding. The AC has zero real-layer validation.
+4. Exception: ACs that are purely UI-local (e.g., "button shows loading spinner") may have only mocked tests.
+
+**Incident:** Crispi-app-2x20.9 (2026-05-12) — Journey-1 profile creation flow. All component tests mocked `fetch` with success responses. Tests passed 100%. At runtime, the callback chain was broken and the server never received the profile submission. Zero real-layer tests existed for any Journey-1 AC.
+
+---
+
+### AP-TEST-7 — Client wire-format tests are not server-side integration tests
+
+**Pattern:** Test suite includes tests that verify the client sends the correct JSON shape (wire format) — e.g., `expect(postBody).toHaveProperty('constraints')` — but NO test exists that starts the actual Express server (or uses supertest against the app) and verifies the route handler receives, validates, processes, and persists the payload correctly.
+
+**Why it's wrong:** Wire-format tests confirm the client serialization. They say nothing about whether the server deserializes correctly, whether middleware passes the body through, whether validation schemas match the client's shape, or whether the DB write succeeds. The Crispi-app-2x20.11 incident (2026-05-12) proved this: client tests verified the wire format included hard constraints in the POST body. Server-side, the route handler's Joi schema silently dropped the `constraints` field (unknown key, `stripUnknown: true`). The constraints never persisted. Client tests all green. Server silently broken.
+
+**Right pattern:**
+- Client-side tests for wire format are valuable and should exist — but they are a DIFFERENT test type than server-side integration tests.
+- Every route handler that receives data from the client must have at least one test that calls the route with a real HTTP request (supertest or equivalent) and verifies the server's BEHAVIOR — not just the client's serialization.
+- The server-side test must verify: (a) the payload arrives intact after middleware, (b) validation accepts/rejects correctly, (c) the service layer receives the expected shape, (d) the persistence layer writes what was intended.
+
+**How Quinn checks:**
+1. For each story with route handlers (POST/PUT/PATCH endpoints), search for test files that exercise the route.
+2. Classify: client-side wire-format tests vs. server-side integration tests (supertest, or test that imports the Express app directly).
+3. If only client-side tests exist for a route handler: flag as P1 finding. The server path is untested.
+4. If the route handler uses a validation schema (Joi, Zod, express-validator), verify the test sends data that exercises the schema — not just data that happens to match.
+
+**Incident:** Crispi-app-2x20.11 (2026-05-12) — Hard constraints POST endpoint. Client tests verified wire format: `{ constraints: [...], profileId: '...' }`. Server's Joi schema had `stripUnknown: true` and the constraints key was not in the schema definition — silently stripped. All client tests passed. No server-side integration test existed. Constraints never persisted.
+
+---
+
+### AP-TEST-8 — UI suggestion/resolution flows require click-through interaction tests
+
+**Pattern:** A UI component renders interactive suggestions (e.g., a banner showing "We found conflicts — click to resolve", a list of alternative actions, a suggestion chip the user can select). Tests verify: (a) the banner renders, (b) the suggestions display correctly. But NO test exercises: clicking a suggestion → triggering the resolution callback → verifying the resolved state or re-submission.
+
+**Why it's wrong:** Rendering a suggestion banner is a presentation concern. The VALUE of the banner is that clicking a suggestion resolves the user's problem. If the click handler is wired wrong (stale closure, missing dependency in `useEffect`, callback references a previous render's state), the banner looks correct and the click does nothing. Component tests for rendering pass. The user-facing flow is broken.
+
+The Crispi-app-2x20.11 incident (2026-05-12) demonstrated this with AC4: the constraint conflict resolution banner rendered correctly with 3 suggested alternatives. Tests verified rendering and suggestion count. At runtime, clicking a suggestion dispatched an action that referenced a stale state closure — the click-to-resubmit flow was dead. The user saw suggestions they could not act on.
+
+**Right pattern:**
+- When a UI surface shows interactive suggestions, the test MUST exercise the interaction end-to-end: render → find suggestion element → simulate click/select → assert the expected callback fires with correct arguments → assert the UI transitions to the resolved/next state.
+- `fireEvent.click` or `userEvent.click` (not just `render`) is required for suggestion elements.
+- The test must verify the callback's EFFECT, not just that it was called — e.g., if clicking "Accept suggestion" should re-submit the form, the test must verify the form re-submission occurred (API call made, state updated, navigation happened).
+
+**How Quinn checks:**
+1. Scan story acceptance criteria for keywords: "suggestion", "recommendation", "resolve", "conflict", "alternative", "click to", "select from".
+2. For each matching AC, find the test file and check whether it simulates a click/select on the suggestion element.
+3. If the test only checks `.toBeInTheDocument()` or `.toHaveTextContent()` on the suggestion without simulating interaction: flag as P1 finding.
+4. If the test simulates click but only checks `expect(callback).toHaveBeenCalled()` without asserting the callback's downstream effect: flag as P2 finding (callback wired but effect untested).
+
+**Incident:** Crispi-app-2x20.11 (2026-05-12) — AC4 constraint conflict suggestion banner. Tests rendered the banner, verified 3 suggestions displayed, and asserted the component was in the document. No test simulated clicking a suggestion. At runtime, the click handler closed over stale state and the re-submission flow was dead. Users saw an actionable suggestion they could not use.
+
+---
+
 ## How to extend this file
 
 When a new AI-coder failure mode shows up in a code review:
