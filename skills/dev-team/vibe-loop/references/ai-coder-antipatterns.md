@@ -228,6 +228,27 @@ class FooService {
 
 ---
 
+### AP-TEST-5 — Journey-level coverage gap (UI surfaces without end-to-end flow tests)
+
+**Pattern:** A story ships a UI surface (page, dialog, multi-step form) whose test suite covers rendering, button states, and individual interactions — but no integration test exercises the full user journey end-to-end (form entry → submission → confirmation gate → API call → UI update).
+
+**Why it's wrong:** Individual component tests validate pieces in isolation. When the same agent writes both feature and tests, the connective tissue between steps (callback chains, state propagation across view transitions, stale closures in `useCallback` dependency arrays) goes untested. The Crispi-app-2x20.9 incident (2026-05-12) shipped a ProfileManagementPage where `handleConfirmConstraints` never called `submitProfile` — the profile name was silently lost at the gate transition. Individual tests for the form, the gate, and the page all passed. The P0 bug was invisible because no test exercised the full Journey-1 flow: create profile → add hard constraint → gate appears → confirm → profile submitted.
+
+**Right pattern:**
+- For any story that ships a UI surface named in the UX design spec (e.g., `_bmad-output/planning-artifacts/ux-design-specification.md`), an integration test MUST exist for each user journey the surface participates in.
+- The test must exercise the full flow: user input → intermediate state transitions → final outcome (API call, navigation, state change).
+- Individual component tests (rendering, button states, a11y) are necessary but NOT sufficient.
+
+**How Quinn checks:**
+1. Read the story spec's acceptance criteria. Identify any that describe a multi-step user flow (look for: "user creates X → Y appears → user confirms → Z happens").
+2. Search the test files for the story. For each multi-step AC, verify an integration test exists that exercises the full flow, not just individual steps.
+3. If the story references a UX design spec journey (e.g., "Journey 1", "Journey 4"), verify at least one test is named or described with that journey identifier.
+4. Missing journey-level tests are P0 findings (the 2x20.9 incident proved that component-level coverage creates false confidence in broken flows).
+
+**Incident:** Crispi-app-2x20.9 — ProfileManagementPage Journey-1 flow broken. Component tests passed; no integration test existed. Quinn checkpoint reported "0 P0/P1" while the primary user flow was non-functional.
+
+---
+
 ## How to extend this file
 
 When a new AI-coder failure mode shows up in a code review:
