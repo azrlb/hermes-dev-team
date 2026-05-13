@@ -247,6 +247,20 @@ class FooService {
 
 **Incident:** Crispi-app-2x20.9 — ProfileManagementPage Journey-1 flow broken. Component tests passed; no integration test existed. Quinn checkpoint reported "0 P0/P1" while the primary user flow was non-functional.
 
+**Carve-out — pure artifacts that do NOT span layers (Rule 3 exception):**
+
+AP-TEST-5 applies to surfaces that SPAN layers (HTTP route, page that fetches data, form that POSTs, integration component composing network/storage-calling children). The following artifact types do NOT span layers and are EXEMPT from journey-level test requirements:
+
+1. **Pure render components** — props in, JSX out. No fetch, no localStorage, no global state read, no hooks with side effects, no API calls, no store mutations.
+2. **Pure hooks** — no I/O, no side effects beyond `useState`/`useMemo`/`useCallback`. Computation or state-only.
+3. **Pure functions** — no I/O, no side effects. Input → output transformations, formatters, validators, mappers.
+4. **Type definitions** — TypeScript interfaces, type aliases, enums. Zero runtime footprint.
+5. **CSS-only changes** — styling files (`.css`, `.module.css`, `.scss`) with no JavaScript logic.
+
+**Auditability requirement:** When Quinn invokes this carve-out to exempt a file from AP-TEST-5, it MUST state the reason in its finding report — e.g., `"AP-TEST-5 carve-out: SafeCatalogCounter is a pure render component (props in, JSX out, no I/O)"`. Silent application of the carve-out without stated justification is itself a finding. This ensures reviewers can trace why a UI artifact was exempted from journey test requirements.
+
+**Precedent:** `qllv.3` SafeCatalogCounter review (Crispi-app, 2026-05-12) — a shared pure-render component was flagged under AP-TEST-5. Quinn exempted it after confirming: no hooks with side effects, no API calls, props-only interface, renders catalog items from data passed in. The carve-out was correct in spirit but was not codified in the rule's wording, requiring individual reviewer judgment. This entry codifies it.
+
 ---
 
 ### AP-TEST-6 — AC-test mapping requires real-layer coverage, not mocked fetch
