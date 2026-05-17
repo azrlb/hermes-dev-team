@@ -1,0 +1,86 @@
+#!/usr/bin/env bash
+# set-focus <bead-id>
+#
+# Marks <bead-id> as the single focus bead in the current project's beads tracker.
+# Removes the `focus` label from any other bead in this project that has it,
+# then adds `focus` to the given bead.
+#
+# Designed for the Session-Start Orientation protocol: only ONE bead per project
+# carries the `focus` label at a time. Daytime BMAD/Claude sessions read the
+# focus bead first and orient to it before doing any work.
+#
+# Idempotent — running it again on the same bead is a no-op.
+
+set -euo pipefail
+
+NEW_BEAD="${1:-}"
+
+if [[ -z "$NEW_BEAD" ]]; then
+  echo "usage: $(basename "$0") <bead-id>" >&2
+  echo "" >&2
+  echo "  Sets <bead-id> as THE focus bead in the current project." >&2
+  echo "  Clears the focus label from any other focused bead." >&2
+  echo "" >&2
+  echo "  Run from inside the target project's repo so 'bd' resolves the right db." >&2
+  exit 1
+fi
+
+# Verify bd is available
+if ! command -v bd >/dev/null 2>&1; then
+  echo "error: 'bd' (beads CLI) not found on PATH" >&2
+  exit 1
+fi
+
+# Verify we're in a repo with a beads tracker
+if ! bd where >/dev/null 2>&1; then
+  echo "error: no beads database found in $(pwd)" >&2
+  echo "  Run this from inside a project repo that has '.beads/' initialized." >&2
+  exit 1
+fi
+
+# Verify the target bead exists
+if ! bd show "$NEW_BEAD" >/dev/null 2>&1; then
+  echo "error: bead '$NEW_BEAD' not found in this project's tracker" >&2
+  exit 1
+fi
+
+# Clear focus from any other bead currently labeled focus
+# Use JSON output and python (more reliable than jq parsing here)
+mapfile -t CURRENT_FOCUSED < <(
+  bd list --label focus --status open --json 2>/dev/null \
+    | python3 -c "import sys,json
+try:
+  data = json.load(sys.stdin)
+  if isinstance(data, dict):
+    data = data.get('issues', data.get('items', []))
+  for item in data:
+    if isinstance(item, dict) and 'id' in item:
+      print(item['id'])
+except Exception:
+  pass" 2>/dev/null \
+    || true
+)
+
+CLEARED_COUNT=0
+for existing in "${CURRENT_FOCUSED[@]}"; do
+  if [[ -n "$existing" && "$existing" != "$NEW_BEAD" ]]; then
+    if bd update "$existing" --remove-label focus >/dev/null 2>&1; then
+      echo "  cleared focus from $existing"
+      CLEARED_COUNT=$((CLEARED_COUNT + 1))
+      # Beads-CLI write wobble workaround: pace updates by 3s
+      sleep 3
+    fi
+  fi
+done
+
+# Add focus to the target
+if bd update "$NEW_BEAD" --add-label focus >/dev/null 2>&1; then
+  if [[ $CLEARED_COUNT -gt 0 ]]; then
+    echo "✓ focus set on $NEW_BEAD (cleared from $CLEARED_COUNT other bead(s))"
+  else
+    echo "✓ focus set on $NEW_BEAD"
+  fi
+else
+  echo "error: failed to add focus label to $NEW_BEAD" >&2
+  exit 1
+fi
