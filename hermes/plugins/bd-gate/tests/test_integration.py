@@ -193,19 +193,47 @@ Path(REPO, "src", "lib.ts").write_text("export function lib() { return 1; }\n")
 git("add", "src/lib.ts", "src/__tests__/lib.test.ts")
 git("commit", "-q", "-m", "baseline: lib + test")
 
-# Now Issue Core-tst5: model modifies the test file and commits.
+# Now Issue Core-tst5: model rewrites the test to soften the assertion
+# (replaces `toBe(1)` with `toBeDefined()`). This is the AGENTS.md "soft-
+# assertion theater" pattern that Gate 5c catches — beads_FlowInCash_Core-nty
+# fix #4.
 Path(REPO, "src", "__tests__", "lib.test.ts").write_text(
-    "describe('lib', () => { it('passes', () => expect(true).toBe(true)); });\n"
+    "import { lib } from '../lib';\n"
+    "describe('lib', () => {\n"
+    "  it('returns something', () => expect(lib()).toBeDefined());\n"
+    "});\n"
 )
 Path(REPO, "src", "lib.ts").write_text("export function lib() { return 99; }\n")
 git("add", "src/lib.ts", "src/__tests__/lib.test.ts")
-git("commit", "-q", "-m", "fix(Core-tst5): rewrite test to be trivial")
+git("commit", "-q", "-m",
+    "fix(Core-tst5): soften assertion from toBe(1) to toBeDefined()")
 attest("Core-tst5", "PASS")
 
 all_ok &= case(
-    "Gate 5: existing test file MODIFIED → BLOCK",
+    "Gate 5c: softened-assertion in modified test file → BLOCK",
     "terminal", {"command": "bd close Core-tst5"},
-    expect_block=True, contains="modified, deleted, or renamed existing test files",
+    expect_block=True, contains="softened-assertion pattern",
+)
+
+# Also exercise Gate 5a: a deletion of the test file still blocks.
+import os as _os
+_os.remove(Path(REPO, "src", "__tests__", "lib.test.ts"))
+git("add", "-A", "src/__tests__/lib.test.ts")
+git("commit", "-q", "-m", "fix(Core-tst5d): drop the test file entirely")
+attest("Core-tst5d", "PASS")
+
+# Need a real-code commit referencing Core-tst5d as well so Gate 1 doesn't
+# trip first.
+Path(REPO, "src", "lib.ts").write_text(
+    "export function lib() { return 100; } // Core-tst5d\n")
+git("add", "src/lib.ts")
+git("commit", "-q", "-m", "fix(Core-tst5d): code change too")
+attest("Core-tst5d", "PASS")
+
+all_ok &= case(
+    "Gate 5a: test file DELETED → BLOCK",
+    "terminal", {"command": "bd close Core-tst5d"},
+    expect_block=True, contains="deleted or renamed existing test files",
 )
 
 # ─── Stage 5c: Gate 6 — export removal blocks (no BREAKING) ────────────────
