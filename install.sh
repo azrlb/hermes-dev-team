@@ -62,6 +62,46 @@ link "$REPO_DIR/scripts/pi-build-loop.sh"          "$HOME/.local/bin/pi-build-lo
 link "$REPO_DIR/scripts/vibe-plan-then-build.sh"   "$HOME/.local/bin/vibe-plan-then-build.sh"
 echo
 
+echo "Skills (symlinked to ~/.hermes/skills/dev-team/):"
+SKILLS=(
+    block-watcher
+    cross-check
+    email-handler
+    error-fix
+    escalation-handler
+    health-fix
+    kanban-decomposition
+    land-the-plane
+    learned-fixes
+    loop-prompt-author
+    model-tier-classifier
+    pi-dispatcher
+    stack-detect
+    support-concierge
+    telegram-dispatch
+    vibe-loop
+    vibe-plan
+    work-loop
+    bead-execution
+    beads-decomposition
+    bmoad-bead-authoring
+    drain-logger
+    loop-engineering-curator
+    orchestrated-drain
+    orchestrator-prompt
+    party-mode
+    shared-execution
+    sidecar-instacart-prices
+    skill-creation-trigger
+    social-video-pipeline
+    state-audit
+    typescript-error-handling
+)
+for skill in "${SKILLS[@]}"; do
+    link "$REPO_DIR/skills/dev-team/$skill" "$HOME/.hermes/skills/dev-team/$skill"
+done
+echo
+
 echo "Note: launcher .desktop files at ~/.local/share/applications/ (manual install):"
 echo "  hermes-plan-then-build.desktop  — chained plan → build pipeline"
 echo "  hermes-pi-build-loop.desktop    — build only (drain bd queue)"
